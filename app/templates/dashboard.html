@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - CRM Leandro{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">Bienvenido, {{ username }}!</h1>
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Horarios</h5>
+                    <p class="card-text">Gestionar horarios del personal.</p>
+                    <a href="/schedule" class="btn btn-primary">Ver Horarios</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Caja Diaria</h5>
+                    <p class="card-text">Control de ingresos y egresos.</p>
+                    <a href="/daily-cash" class="btn btn-primary">Ver Caja</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Inventario</h5>
+                    <p class="card-text">Control de stock y pedidos.</p>
+                    <a href="/inventory" class="btn btn-primary">Ver Inventario</a>
+                </div>
+            </div>
+        </div>
+        {% if is_admin %}
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Usuarios</h5>
+                    <p class="card-text">Administrar usuarios del sistema.</p>
+                    <a href="/users" class="btn btn-primary">Gestionar Usuarios</a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Caja Diaria - CRM Leandro{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">Planilla de Caja - Marzo 2025</h1>
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Caja inicial</th>
+                            <th>Facturación</th>
+                            <th>Gastos</th>
+                            <th>Detalle</th>
+                            <th>Caja fuerte</th>
+                            <th>Responsable</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in entries %}
+                        <tr>
+                            <td>{{ entry.date }}</td>
+                            <td>${{ "%.2f"|format(entry.initial_cash) }}</td>
+                            <td>${{ "%.2f"|format(entry.revenue) }}</td>
+                            <td>${{ "%.2f"|format(entry.expenses) }}</td>
+                            <td>{{ entry.details }}</td>
+                            <td>${{ "%.2f"|format(entry.safe_balance) }}</td>
+                            <td>{{ entry.responsible }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

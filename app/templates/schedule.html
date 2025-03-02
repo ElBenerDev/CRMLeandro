@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Horarios - CRM Leandro{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">Horarios del Personal</h1>
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Empleado</th>
+                            {% for day in days %}
+                            <th>{{ day }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for employee in employees %}
+                        <tr>
+                            <td style="background-color: {{ employee.color }}; color: white;">
+                                {{ employee.name }}
+                            </td>
+                            {% for day in days %}
+                            <td {% if employee.schedule[day] == "OFF" %}class="table-secondary"{% endif %}>
+                                {{ employee.schedule[day] }}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if is_admin %}
+            <button class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#editScheduleModal">
+                Editar Horarios
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

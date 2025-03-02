@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Movimientos de Stock - CRM Leandro{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1>Movimientos de Stock</h1>
+        </div>
+        <div class="col-auto">
+            <a href="/inventory" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Volver al Inventario
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Producto</th>
+                            <th>Stock Anterior</th>
+                            <th>Stock Nuevo</th>
+                            <th>Usuario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for movement in movements %}
+                        <tr>
+                            <td>{{ movement.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>{{ movement.item.name }}</td>
+                            <td>{{ movement.previous_stock }}</td>
+                            <td>{{ movement.new_stock }}</td>
+                            <td>{{ movement.user }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

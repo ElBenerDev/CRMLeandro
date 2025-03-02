@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Inventario - CRM Leandro{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+.stat-card {
+    transition: all 0.3s ease;
+}
+.stat-card:hover {
+    transform: translateY(-5px);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1>Dashboard de Inventario</h1>
+        </div>
+        <div class="col-auto">
+            <a href="/inventory" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Volver al Inventario
+            </a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <!-- Stats Cards -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card stat-card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Items</h5>
+                    <h2>{{ stats.total_items }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card stat-card bg-warning text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Stock Bajo</h5>
+                    <h2>{{ stats.low_stock_count }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card stat-card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Proveedores</h5>
+                    <h2>{{ stats.supplier_count }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Items por Proveedor</h5>
+                    <canvas id="supplierChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Stock por Proveedor</h5>
+                    <canvas id="stockChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Low Stock Alert Table -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Items con Stock Bajo</h5>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Stock Actual</th>
+                            <th>Unidad</th>
+                            <th>Proveedor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in low_stock_items %}
+                        <tr>
+                            <td>{{ item.name }}</td>
+                            <td>{{ item.current_stock }}</td>
+                            <td>{{ item.unit }}</td>
+                            <td>{{ item.supplier }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Supplier Distribution Chart
+    new Chart(document.getElementById('supplierChart'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ suppliers|tojson }},
+            datasets: [{
+                data: {{ supplier_counts|tojson }},
+                backgroundColor: [
+                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                    '#FF9F40', '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+
+    // Stock by Supplier Chart
+    new Chart(document.getElementById('stockChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ suppliers|tojson }},
+            datasets: [{
+                label: 'Stock Total',
+                data: {{ supplier_stocks|tojson }},
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

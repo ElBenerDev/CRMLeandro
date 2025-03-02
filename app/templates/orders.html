@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Orders{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Orders</h2>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#orderModal">
+            New Order
+        </button>
+    </div>
+
+    <div class="orders-grid">
+        {% for order in orders %}
+        <div class="order-card">
+            <div class="order-header">
+                <h5>Order #{{ order._id }}</h5>
+                <span class="status-badge {{ order.status.lower() }}">
+                    {{ order.status }}
+                </span>
+            </div>
+            <div class="order-content">
+                <p><strong>Client:</strong> {{ order.client }}</p>
+                <p><strong>Amount:</strong> ${{ "%.2f"|format(order.amount) }}</p>
+                <p><strong>Description:</strong> {{ order.description }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

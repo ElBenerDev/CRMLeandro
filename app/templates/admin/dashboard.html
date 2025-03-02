@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">User Management</h5>
+                    <div class="list-group">
+                        <a href="{{ url_for('users.users') }}" class="list-group-item list-group-item-action">
+                            Users List
+                        </a>
+                        <a href="{{ url_for('users.new_user') }}" class="list-group-item list-group-item-action">
+                            Add User
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">System Overview</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Total Users</h6>
+                                    <h2 class="card-text">{{ stats.total_users }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Add more stats cards here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

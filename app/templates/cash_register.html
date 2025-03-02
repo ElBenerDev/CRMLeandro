@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Planilla de Caja{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="text-center mb-4">PLANILLA DE CAJA</h1>
+
+    <div class="cash-register-controls mb-4">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newEntryModal">
+            Nueva Entrada
+        </button>
+        <button class="btn btn-success ms-2" onclick="exportToExcel()">
+            Exportar a Excel
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>FECHA</th>
+                    <th>ENTRADA</th>
+                    <th>INGRESOS</th>
+                    <th>GASTOS</th>
+                    <th>DETALLES</th>
+                    <th>CAJA FUERTE</th>
+                    <th>RESPONSABLE</th>
+                    <th>ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td>{{ entry.date.strftime('%d/%m/%Y') }}</td>
+                    <td class="text-end">${{ "%.2f"|format(entry.initial_amount) }}</td>
+                    <td class="text-end">${{ "%.2f"|format(entry.income) }}</td>
+                    <td class="text-end">${{ "%.2f"|format(entry.expenses) }}</td>
+                    <td>{{ entry.details or '' }}</td>
+                    <td class="text-end">${{ "%.2f"|format(entry.safe_balance) }}</td>
+                    <td>{{ entry.responsible }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-warning" onclick="editEntry('{{ entry._id }}')">
+                            Editar
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- New Entry Modal -->
+<div class="modal fade" id="newEntryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nueva Entrada de Caja</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="cashEntryForm">
+                    <div class="mb-3">
+                        <label for="date">Fecha</label>
+                        <input type="date" id="date" name="date" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="income">Ingresos</label>
+                        <input type="number" id="income" name="income" step="0.01" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="expenses">Gastos</label>
+                        <input type="number" id="expenses" name="expenses" step="0.01" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="details">Detalles</label>
+                        <textarea id="details" name="details" class="form-control"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="responsible">Responsable</label>
+                        <select id="responsible" name="responsible" class="form-control" required>
+                            <option value="ONE">ONE</option>
+                            <option value="MERLIN">MERLIN</option>
+                            <option value="KEIDY">KEIDY</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" form="cashEntryForm" class="btn btn-primary">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/cash_register.js') }}"></script>
+{% endblock %}

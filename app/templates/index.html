@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Orders</h5>
+                <p class="card-text display-4">{{ orders_count }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <h3>Recent Orders</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Client</th>
+                    <th>Description</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in recent_orders %}
+                <tr>
+                    <td>{{ order.get('client', '') }}</td>
+                    <td>{{ order.get('description', '') }}</td>
+                    <td>${{ "%.2f"|format(order.get('amount', 0)) }}</td>
+                    <td>{{ order.get('status', '') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

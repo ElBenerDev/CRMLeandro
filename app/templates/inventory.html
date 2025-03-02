@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Inventario - CRM Leandro{% endblock %}
+
+{% block head %}
+<!-- Add Bootstrap and other dependencies -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1>Control de Inventario</h1>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-success" id="startCount">
+                <i class="fas fa-clipboard-check"></i> Iniciar Conteo Diario
+            </button>
+            <a href="/inventory/dashboard" class="btn btn-info ms-2">
+                <i class="fas fa-chart-bar"></i> Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped" id="inventoryTable">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Stock Actual</th>
+                            <th>Unidad</th>
+                            <th>Proveedor</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in inventory %}
+                        <tr data-item-id="{{ item._id }}">
+                            <td>{{ item.name }}</td>
+                            <td class="stock-cell">
+                                <span class="stock-value">{{ item.current_stock }}</span>
+                                <div class="input-group stock-edit d-none">
+                                    <input type="number" 
+                                           class="form-control form-control-sm stock-input" 
+                                           value="{{ item.current_stock }}"
+                                           min="0" 
+                                           step="0.1">
+                                    <button class="btn btn-sm btn-primary save-stock">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td>{{ item.unit }}</td>
+                            <td>{{ item.supplier }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-warning edit-stock">
+                                    <i class="fas fa-edit"></i> Editar
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Add Bootstrap JS before your custom script -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', path='js/inventory.js') }}"></script>
+<script>
+    // Verify script loading
+    console.log('Inventory scripts loaded');
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('Inventory DOM ready, elements:', {
+            table: !!document.getElementById('inventoryTable'),
+            editButtons: document.querySelectorAll('.edit-stock').length,
+            saveButtons: document.querySelectorAll('.save-stock').length
+        });
+    });
+</script>
+{% endblock %}
