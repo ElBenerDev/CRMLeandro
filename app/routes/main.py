@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
-from ..database import db
+from ..database import get_db
 import logging
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+web_router = APIRouter()
+api_router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 async def verify_admin(request: Request):
@@ -20,33 +21,16 @@ async def verify_session(request: Request):
         return RedirectResponse(url="/login", status_code=303)
     return None
 
-@router.get("/")
-@router.get("/dashboard")
+@web_router.get("/dashboard", name="main.dashboard")
 async def dashboard(request: Request):
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login")
-    try:
-        # Get dashboard statistics
-        orders_count = await db.orders.count_documents({})
-        recent_orders = await db.orders.find().sort('_id', -1).limit(5).to_list(5)
-        users_count = await db.users.count_documents({})
-        
-        return templates.TemplateResponse("dashboard.html", {
-            "request": request,
-            "orders_count": orders_count,
-            "recent_orders": recent_orders,
-            "users_count": users_count
-        })
-    except Exception as e:
-        logger.error(f"Dashboard error: {e}")
-        return templates.TemplateResponse("dashboard.html", {
-            "request": request,
-            "error": "Error loading dashboard data"
-        })
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+    })
 
-@router.get("/users")
-async def users(request: Request, _=Depends(verify_admin)):
+@web_router.get("/users")
+async def users(request: Request):
     try:
+        db = await get_db()
         users_list = await db.users.find().to_list(None)
         return templates.TemplateResponse("users.html", {
             "request": request,
@@ -59,11 +43,10 @@ async def users(request: Request, _=Depends(verify_admin)):
             "error": "Error loading users data"
         })
 
-@router.get("/inventory")
+@web_router.get("/inventory")
 async def inventory_page(request: Request):
-    if session_redirect := await verify_session(request):
-        return session_redirect
     try:
+        db = await get_db()
         inventory_items = await db.inventory.find().to_list(None)
         return templates.TemplateResponse("inventory.html", {
             "request": request,
@@ -73,30 +56,66 @@ async def inventory_page(request: Request):
         logger.error(f"Inventory error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/schedule")
+@web_router.get("/schedule")
 async def schedule_page(request: Request):
-    if session_redirect := await verify_session(request):
-        return session_redirect
+    logger.debug("Accessing schedule page")
     try:
+        db = await get_db()
         schedules = await db.schedules.find().to_list(None)
-        return templates.TemplateResponse("schedule.html", {
-            "request": request,
-            "schedules": schedules
-        })
+        
+        # Add colors and employee names for the template
+        employee_colors = {
+            "ONE": "#ea5c8f",
+            "MERLIN": "#46bdc6",
+            "KEIDY": "#fbc975"
+        }
+        
+        return templates.TemplateResponse(
+            "schedule.html",
+            {
+                "request": request, 
+                "schedules": schedules,
+                "colors": employee_colors,
+                "is_admin": False  # Default to non-admin
+            }
+        )
     except Exception as e:
-        logger.error(f"Schedule error: {e}")
+        logger.error(f"Schedule error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/daily-cash")
+@web_router.get("/daily-cash")
 async def daily_cash_page(request: Request):
-    if session_redirect := await verify_session(request):
-        return session_redirect
+    logger.debug("Accessing daily cash page")
     try:
+        db = await get_db()
         daily_cash = await db.daily_cash.find().sort("date", -1).to_list(None)
-        return templates.TemplateResponse("daily_cash.html", {
-            "request": request,
-            "daily_cash": daily_cash
-        })
+        
+        total_billing = sum(entry.get("billing", 0) for entry in daily_cash)
+        total_expenses = sum(entry.get("expenses", 0) for entry in daily_cash)
+        total_balance = total_billing - total_expenses
+        
+        return templates.TemplateResponse(
+            "daily_cash.html",
+            {
+                "request": request,
+                "daily_cash": daily_cash,
+                "total_billing": total_billing,
+                "total_expenses": total_expenses,
+                "total_balance": total_balance,
+                "is_admin": False  # Default to non-admin
+            }
+        )
     except Exception as e:
-        logger.error(f"Daily cash error: {e}")
+        logger.error(f"Daily cash error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/status")
+async def status():
+    return {"status": "ok"}
+
+# Combine routers
+router = APIRouter(prefix="/main", tags=["main"])
+for route in web_router.routes:
+    router.routes.append(route)
+for route in api_router.routes:
+    router.routes.append(route)

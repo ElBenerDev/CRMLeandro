@@ -1,4 +1,3 @@
-/app/templates/login.html
 {% extends "base.html" %}
 
 {% block title %}Login - CRM Leandro{% endblock %}
@@ -17,7 +16,7 @@
                         {{ error }}
                     </div>
                     {% endif %}
-                    <form method="POST" action="/login">
+                    <form method="POST" action="{{ url_for('auth.login') }}">
                         <div class="mb-3">
                             <label for="username" class="form-label">Username</label>
                             <input type="text" class="form-control" id="username" name="username" required>

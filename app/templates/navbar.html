@@ -1,6 +1,11 @@
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container">
-        <a class="navbar-brand" href="/">CRM Leandro</a>
+        <a class="navbar-brand" href="/dashboard">
+            <img src="{{ url_for('static', path='images/ChurroWorldLogo.png') }}" 
+                 alt="ChurroWorld Logo" 
+                 height="40" 
+                 class="d-inline-block align-top">
+        </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -35,7 +40,7 @@
                 {% if request.session.get('user') %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user"></i> {{ request.session.get('user') }}
+                            <i class="fas fa-user"></i> {{ request.session.get('user', {}).get('username', 'Guest') }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                             {% if request.session.get('is_admin') %}

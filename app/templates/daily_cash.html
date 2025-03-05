@@ -3,39 +3,47 @@
 {% block title %}Caja Diaria - CRM Leandro{% endblock %}
 
 {% block content %}
-<div class="container">
-    <h1 class="mb-4">Planilla de Caja - Marzo 2025</h1>
-    <div class="card">
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Caja inicial</th>
-                            <th>Facturación</th>
-                            <th>Gastos</th>
-                            <th>Detalle</th>
-                            <th>Caja fuerte</th>
-                            <th>Responsable</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for entry in entries %}
-                        <tr>
-                            <td>{{ entry.date }}</td>
-                            <td>${{ "%.2f"|format(entry.initial_cash) }}</td>
-                            <td>${{ "%.2f"|format(entry.revenue) }}</td>
-                            <td>${{ "%.2f"|format(entry.expenses) }}</td>
-                            <td>{{ entry.details }}</td>
-                            <td>${{ "%.2f"|format(entry.safe_balance) }}</td>
-                            <td>{{ entry.responsible }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+<div class="daily-cash-container">
+    <h2>Caja Diaria</h2>
+    <div class="totals-summary">
+        <div class="total-item">
+            <div class="label">Total Ingresos</div>
+            <div class="amount">${{ "%.2f"|format(total_billing) }}</div>
+        </div>
+        <div class="total-item">
+            <div class="label">Total Gastos</div>
+            <div class="amount">${{ "%.2f"|format(total_expenses) }}</div>
+        </div>
+        <div class="total-item">
+            <div class="label">Balance</div>
+            <div class="amount">${{ "%.2f"|format(total_balance) }}</div>
         </div>
     </div>
+    <table class="daily-cash-table">
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Monto Inicial</th>
+                <th>Ingresos</th>
+                <th>Gastos</th>
+                <th>Monto Final</th>
+                <th>Responsable</th>
+                <th>Detalles</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in daily_cash %}
+            <tr>
+                <td>{{ entry.date.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>${{ "%.2f"|format(entry.initial_amount) }}</td>
+                <td>${{ "%.2f"|format(entry.billing) }}</td>
+                <td>${{ "%.2f"|format(entry.expenses) }}</td>
+                <td>${{ "%.2f"|format(entry.safe_amount) }}</td>
+                <td>{{ entry.responsible }}</td>
+                <td>{{ entry.details }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </div>
 {% endblock %}

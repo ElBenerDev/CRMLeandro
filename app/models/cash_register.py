@@ -1,18 +1,19 @@
 from pydantic import BaseModel
-from datetime import date, datetime
-from typing import Optional
+from datetime import datetime
+from typing import Optional, List
 
 class CashEntry(BaseModel):
-    date: date
-    initial_amount: float = 200.00
-    income: float = 0.0
-    expenses: float = 0.0
-    details: Optional[str] = None
-    safe_balance: float
-    responsible: str
-    created_at: datetime = datetime.now()
-
-class ExpenseDetail(BaseModel):
-    description: str
     amount: float
-    date: date
+    description: str
+    entry_type: str
+    timestamp: datetime = datetime.now()
+    created_by: Optional[str] = None
+
+class CashRegister(BaseModel):
+    opening_amount: float
+    closing_amount: Optional[float] = None
+    date: datetime = datetime.now()
+    entries: List[CashEntry] = []
+    status: str = "open"
+    created_by: Optional[str] = None
+    notes: Optional[str] = None

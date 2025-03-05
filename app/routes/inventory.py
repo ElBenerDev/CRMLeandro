@@ -4,21 +4,19 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from typing import List
 from pydantic import BaseModel, Field
 from datetime import datetime
-from ..database import db
+from ..database import get_db
 import logging
 import csv
 from io import StringIO
 from bson import ObjectId
+from pymongo import UpdateOne
 
 logger = logging.getLogger(__name__)
 
-# Create two separate routers
 web_router = APIRouter()
 api_router = APIRouter(prefix="/api/inventory", tags=["inventory"])
-
 templates = Jinja2Templates(directory="app/templates")
 
-# Convert to Pydantic model
 class InventoryItem(BaseModel):
     name: str
     current_stock: float
@@ -35,40 +33,35 @@ class InventoryItem(BaseModel):
     class Config:
         from_attributes = True
 
-# Web routes
-@web_router.get("/inventory")
+async def get_user_from_token(request: Request, db):
+    token = request.cookies.get("access_token")
+    if not token:
+        return None
+    return await db.active_tokens.find_one({"token": token})
+
+@web_router.get("/inventory", name="inventory.index")
 async def inventory_page(request: Request):
     """Display inventory page"""
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login")
-        
     try:
-        # Get all inventory items from MongoDB
-        inventory_items = await db.inventory.find().to_list(None)
-        
-        # Convert ObjectId to string for JSON serialization
-        for item in inventory_items:
-            item["_id"] = str(item["_id"])
-        
+        db = await get_db()
+        inventory = await db.inventory.find().to_list(None)
         return templates.TemplateResponse(
             "inventory.html",
-            {
-                "request": request,
-                "inventory": inventory_items,
-                "is_admin": request.session.get("is_admin", False)
-            }
+            {"request": request, "inventory": inventory}
         )
     except Exception as e:
-        logger.error(f"Error in inventory view: {e}")
+        logger.error(f"Inventory error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @web_router.get("/inventory/alerts")
 async def inventory_alerts(request: Request):
     """Show items that need reordering"""
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login")
-    
     try:
+        db = await get_db()
+        token_data = await get_user_from_token(request, db)
+        if not token_data:
+            return RedirectResponse(url="/login")
+
         low_stock_items = await db.inventory.find({
             "$expr": {
                 "$lte": ["$current_stock", "$min_stock"]
@@ -80,7 +73,7 @@ async def inventory_alerts(request: Request):
             {
                 "request": request,
                 "alerts": low_stock_items,
-                "is_admin": request.session.get("is_admin", False)
+                "is_admin": token_data.get("is_admin", False)
             }
         )
     except Exception as e:
@@ -95,18 +88,20 @@ async def add_item(
     unit: str = Form(...),
     supplier: str = Form(...)
 ):
-    if not request.session.get("user"):
-        raise HTTPException(status_code=403)
-        
-    item = InventoryItem(
-        name=name,
-        current_stock=current_stock,
-        unit=unit,
-        to_order=0,
-        supplier=supplier
-    )
-    
     try:
+        db = await get_db()
+        token_data = await get_user_from_token(request, db)
+        if not token_data:
+            raise HTTPException(status_code=403)
+            
+        item = InventoryItem(
+            name=name,
+            current_stock=current_stock,
+            unit=unit,
+            to_order=0,
+            supplier=supplier
+        )
+        
         await db.inventory.insert_one(item.model_dump())
         return RedirectResponse(url="/inventory", status_code=303)
     except Exception as e:
@@ -126,6 +121,7 @@ async def export_inventory(
     format: str = Query("csv", enum=["csv", "excel", "pdf"])
 ):
     """Export inventory in different formats"""
+    db = await get_db()
     items = await db.inventory.find().to_list(None)
     
     if format == "csv":
@@ -162,6 +158,7 @@ async def search_inventory(
     if low_stock:
         query["$expr"] = {"$lte": ["$current_stock", "$min_stock"]}
         
+    db = await get_db()
     items = await db.inventory.find(query).to_list(None)
     return templates.TemplateResponse(
         "inventory.html",
@@ -176,14 +173,12 @@ async def search_inventory(
 @web_router.get("/inventory/dashboard")
 async def inventory_dashboard(request: Request):
     """Show inventory statistics and charts"""
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login")
-
     try:
-        # Basic stats
+        db = await get_db()
+        token_data = await get_user_from_token(request, db)
+        
         total_items = await db.inventory.count_documents({})
         
-        # Get supplier stats
         supplier_stats = await db.inventory.aggregate([
             {"$group": {
                 "_id": "$supplier",
@@ -193,9 +188,8 @@ async def inventory_dashboard(request: Request):
             {"$sort": {"count": -1}}
         ]).to_list(None)
 
-        # Get low stock items
         low_stock_items = await db.inventory.find({
-            "current_stock": {"$lt": 10}  # Adjust threshold as needed
+            "current_stock": {"$lt": 10}
         }).to_list(None)
 
         stats = {
@@ -205,7 +199,6 @@ async def inventory_dashboard(request: Request):
             "suppliers": {stat["_id"]: stat["count"] for stat in supplier_stats}
         }
 
-        # Prepare chart data
         suppliers = [stat["_id"] for stat in supplier_stats]
         supplier_counts = [stat["count"] for stat in supplier_stats]
         supplier_stocks = [stat["total_stock"] for stat in supplier_stats]
@@ -219,7 +212,7 @@ async def inventory_dashboard(request: Request):
                 "supplier_counts": supplier_counts,
                 "supplier_stocks": supplier_stocks,
                 "low_stock_items": low_stock_items,
-                "is_admin": request.session.get("is_admin", False)
+                "is_admin": token_data.get("is_admin", False) if token_data else False
             }
         )
     except Exception as e:
@@ -230,17 +223,19 @@ async def inventory_dashboard(request: Request):
                 "request": request,
                 "error": str(e),
                 "stats": {},
-                "is_admin": request.session.get("is_admin", False)
+                "is_admin": False
             }
         )
 
 @web_router.get("/inventory/movements")
 async def stock_movements(request: Request):
     """View stock movement history"""
-    if not request.session.get("user"):
-        return RedirectResponse(url="/login")
-        
     try:
+        db = await get_db()
+        token_data = await get_user_from_token(request, db)
+        if not token_data:
+            return RedirectResponse(url="/login")
+            
         movements = await db.stock_movements.aggregate([
             {
                 "$lookup": {
@@ -260,141 +255,108 @@ async def stock_movements(request: Request):
             {
                 "request": request,
                 "movements": movements,
-                "is_admin": request.session.get("is_admin", False)
+                "is_admin": token_data.get("is_admin", False)
             }
         )
     except Exception as e:
         logger.error(f"Error in movements view: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# API routes
 @api_router.get("/", response_model=List[InventoryItem])
 async def get_inventory():
+    db = await get_db()
     items = await db.inventory.find().to_list(None)
     return items
 
 @api_router.post("/", response_model=InventoryItem)
-async def create_inventory_item(item: InventoryItem):
+async def create_inventory_item(request: Request, item: InventoryItem):
+    db = await get_db()
+    token_data = await get_user_from_token(request, db)
+    if not token_data:
+        raise HTTPException(status_code=403, detail="Not authenticated")
+        
     item_dict = item.model_dump()
     result = await db.inventory.insert_one(item_dict)
     created_item = await db.inventory.find_one({"_id": result.inserted_id})
     return created_item
 
 @api_router.put("/{item_id}", response_model=InventoryItem)
-async def update_inventory_item(item_id: str, item: InventoryItem):
+async def update_inventory_item(item_id: str, item: InventoryItem, request: Request):
+    db = await get_db()
+    token_data = await get_user_from_token(request, db)
+    if not token_data:
+        raise HTTPException(status_code=403, detail="Not authenticated")
+        
     result = await db.inventory.update_one(
-        {"_id": item_id},
+        {"_id": ObjectId(item_id)},
         {"$set": item.model_dump()}
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Item not found")
-    updated_item = await db.inventory.find_one({"_id": item_id})
+    updated_item = await db.inventory.find_one({"_id": ObjectId(item_id)})
     return updated_item
 
 @api_router.delete("/{item_id}")
-async def delete_inventory_item(item_id: str):
-    result = await db.inventory.delete_one({"_id": item_id})
+async def delete_inventory_item(item_id: str, request: Request):
+    db = await get_db()
+    token_data = await get_user_from_token(request, db)
+    if not token_data or not token_data.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    result = await db.inventory.delete_one({"_id": ObjectId(item_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Item not found")
     return {"message": "Item deleted successfully"}
 
 @api_router.post("/reset", response_model=dict)
 async def reset_inventory_endpoint(request: Request):
-    if not request.session.get("is_admin"):
+    db = await get_db()
+    token_data = await get_user_from_token(request, db)
+    if not token_data or not token_data.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
         
     try:
         await db.inventory.drop()
         await db.inventory.create_index("name", unique=True)
-        await db.inventory.insert_many(DEFAULT_INVENTORY)
-        return {"message": f"Reset {len(DEFAULT_INVENTORY)} inventory items"}
+        return {"message": "Inventory reset successful"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.post("/{item_id}/movement")
-async def record_stock_movement(
-    item_id: str,
-    quantity: float,
-    movement_type: str,  # "in" or "out"
-    notes: str = None
-):
-    """Record stock movements with audit trail"""
-    movement = {
-        "item_id": item_id,
-        "quantity": quantity,
-        "type": movement_type,
-        "timestamp": datetime.utcnow(),
-        "user": request.session.get("user"),
-        "notes": notes
-    }
-    
-    async with await db.client.start_session() as session:
-        async with session.start_transaction():
-            # Update current stock
-            multiplier = 1 if movement_type == "in" else -1
-            result = await db.inventory.update_one(
-                {"_id": item_id},
-                {"$inc": {"current_stock": quantity * multiplier}}
-            )
-            
-            # Record movement
-            await db.stock_movements.insert_one(movement)
-            
-            return {"message": "Stock movement recorded"}
-
-@api_router.post("/bulk-update")
-async def bulk_update_inventory(items: List[InventoryItem]):
-    """Update multiple items at once"""
-    operations = []
-    for item in items:
-        operations.append(
-            UpdateOne(
-                {"name": item.name},
-                {"$set": item.model_dump(exclude={"name"})},
-                upsert=True
-            )
-        )
-    
-    result = await db.inventory.bulk_write(operations)
-    return {
-        "modified": result.modified_count,
-        "upserted": result.upserted_count
-    }
 
 @api_router.patch("/{item_id}")
 async def update_stock(item_id: str, request: Request):
     """Update inventory item stock"""
     try:
+        db = await get_db()
+        token_data = await get_user_from_token(request, db)
+        if not token_data:
+            raise HTTPException(status_code=403, detail="Not authenticated")
+            
         data = await request.json()
         new_stock = float(data.get('current_stock', 0))
         
-        # Get current item
         item = await db.inventory.find_one({"_id": ObjectId(item_id)})
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
 
-        # Create movement record
         movement = {
             "item_id": ObjectId(item_id),
             "item_name": item["name"],
             "previous_stock": item["current_stock"],
             "new_stock": new_stock,
             "change": new_stock - item["current_stock"],
-            "user": request.session.get("user", "unknown"),
+            "user": token_data["username"],
             "timestamp": datetime.utcnow()
         }
 
-        # Insert movement first
         await db.stock_movements.insert_one(movement)
 
-        # Update inventory
         result = await db.inventory.update_one(
             {"_id": ObjectId(item_id)},
             {
                 "$set": {
                     "current_stock": new_stock,
                     "last_updated": datetime.utcnow(),
-                    "last_updated_by": request.session.get("user", "unknown")
+                    "last_updated_by": token_data["username"]
                 }
             }
         )
@@ -412,16 +374,19 @@ async def update_stock(item_id: str, request: Request):
         logger.error(f"Error updating stock: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Add this route to see stock movements
 @api_router.get("/movements/{item_id}")
 async def get_stock_movements(item_id: str, request: Request):
     """Get stock movement history for an item"""
     try:
+        db = await get_db()
+        token_data = await get_user_from_token(request, db)
+        if not token_data:
+            raise HTTPException(status_code=403, detail="Not authenticated")
+            
         movements = await db.stock_movements.find(
             {"item_id": ObjectId(item_id)}
         ).sort("timestamp", -1).to_list(length=50)
         
-        # Convert ObjectId to string for JSON
         for movement in movements:
             movement["_id"] = str(movement["_id"])
             movement["item_id"] = str(movement["item_id"])
@@ -432,5 +397,5 @@ async def get_stock_movements(item_id: str, request: Request):
         logger.error(f"Error getting stock movements: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Export the web router as the main router
+web_router.include_router(api_router)
 router = web_router

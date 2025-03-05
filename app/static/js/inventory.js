@@ -55,15 +55,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        current_stock: newStock,
-                        last_counted: new Date().toISOString()
+                        current_stock: newStock
                     })
                 });
 
-                if (!response.ok) throw new Error('Failed to update');
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to update');
+                }
 
+                const data = await response.json();
+                
                 // Update display
-                stockCell.querySelector('.stock-value').textContent = newStock;
+                stockCell.querySelector('.stock-value').textContent = data.new_stock;
                 stockCell.querySelector('.stock-value').classList.remove('d-none');
                 stockCell.querySelector('.stock-edit').classList.add('d-none');
                 row.querySelector('.edit-stock').disabled = false;

@@ -1,9 +1,14 @@
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.server_api import ServerApi
+from fastapi import HTTPException
+import os
+from dotenv import load_dotenv
 import logging
 from datetime import datetime
 
 # Configure logging
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 # Default inventory items
 DEFAULT_INVENTORY = [
@@ -477,77 +482,35 @@ DEFAULT_INVENTORY = [
     }
 ]
 
-class Database:
-    def __init__(self):
-        self.client = AsyncIOMotorClient("mongodb://localhost:27017")
-        self.db = self.client.crm_leandro
-        
-        # Initialize collections
-        self.inventory = self.db.inventory
-        self.stock_movements = self.db.stock_movements
-        self.users = self.db.users
-        self.schedules = self.db.schedules
-        self.daily_cash = self.db.daily_cash
+# Initialize database variables
+client = None
+db = None
 
-    async def initialize(self):
-        try:
-            # Test connection
-            await self.db.command("ping")
-            logger.info("Connected to MongoDB")
+# Get MongoDB connection string
+MONGODB_URL = os.getenv("MONGODB_URL")
 
-            # Get list of collections properly
-            collections_cursor = await self.db.list_collections()
-            collections = []
-            async for collection in collections_cursor:
-                collections.append(collection["name"])
-            logger.info(f"Found collections: {collections}")
-            
-            # Create stock_movements if doesn't exist
-            if 'stock_movements' not in collections:
-                await self.db.create_collection("stock_movements")
-                await self.stock_movements.create_index(
-                    [("item_id", 1), ("timestamp", -1)],
-                    name="item_id_1_timestamp_-1"
-                )
-                logger.info("Created stock_movements collection and index")
+if not MONGODB_URL:
+    raise ValueError("MONGODB_URL environment variable is not set")
 
-            # Initialize inventory if empty
-            inventory_count = await self.inventory.count_documents({})
-            if inventory_count == 0:
-                result = await self.inventory.insert_many(DEFAULT_INVENTORY)
-                logger.info(f"Initialized inventory with {len(result.inserted_ids)} items")
+client = AsyncIOMotorClient(
+    MONGODB_URL,
+    server_api=ServerApi('1'),
+    serverSelectionTimeoutMS=5000
+)
 
-            # Create indexes
-            await self.inventory.create_index("name", unique=True)
-            await self.users.create_index("username", unique=True)
-            
-            logger.info("Database initialization complete")
-            return True
+db = client.crm_leandro
 
-        except Exception as e:
-            logger.error(f"Database initialization error: {str(e)}")
-            return False
+async def get_db():
+    try:
+        await client.admin.command('ping')
+        logger.info("Successfully connected to MongoDB Atlas!")
+        return db
+    except Exception as e:
+        logger.error(f"Unable to connect to database: {e}")
+        raise e
 
-    async def reset_inventory(self):
-        try:
-            await self.inventory.drop()
-            await self.inventory.insert_many(DEFAULT_INVENTORY)
-            logger.info(f"Reset inventory with {len(DEFAULT_INVENTORY)} items")
-            return True
-        except Exception as e:
-            logger.error(f"Error resetting inventory: {e}")
-            return False
+async def close_db_connection():
+    client.close()
 
-    async def close(self):
-        if self.client:
-            self.client.close()
-            logger.info("Closed MongoDB connection")
-
-# Create global database instance
-db = Database()
-
-async def init_db():
-    return await db.initialize()
-
-# Export database instance and initialization function
-__all__ = ['db', 'init_db']
+# Export only what's needed
+__all__ = ['db', 'get_db', 'close_db_connection']

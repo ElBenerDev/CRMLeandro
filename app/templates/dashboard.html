@@ -3,47 +3,59 @@
 {% block title %}Dashboard - CRM Leandro{% endblock %}
 
 {% block content %}
-<div class="container">
-    <h1 class="mb-4">Bienvenido, {{ username }}!</h1>
+<div class="container-fluid mt-4">
     <div class="row">
-        <div class="col-md-4 mb-4">
+        <div class="col-md-3">
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Horarios</h5>
-                    <p class="card-text">Gestionar horarios del personal.</p>
-                    <a href="/schedule" class="btn btn-primary">Ver Horarios</a>
+                    <h5 class="card-title">Menu</h5>
+                    <div class="list-group">
+                        <a href="/inventory" class="list-group-item list-group-item-action">
+                            Inventory
+                        </a>
+                        <a href="/orders" class="list-group-item list-group-item-action">
+                            Orders
+                        </a>
+                        <a href="/users" class="list-group-item list-group-item-action">
+                            Users
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-4">
+        <div class="col-md-9">
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Caja Diaria</h5>
-                    <p class="card-text">Control de ingresos y egresos.</p>
-                    <a href="/daily-cash" class="btn btn-primary">Ver Caja</a>
+                    <h5 class="card-title">System Overview</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Total Users</h6>
+                                    <h2 class="card-text">{{ stats.total_users }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-success text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Total Orders</h6>
+                                    <h2 class="card-text">{{ stats.total_orders }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-info text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Inventory Items</h6>
+                                    <h2 class="card-text">{{ stats.total_inventory }}</h2>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Inventario</h5>
-                    <p class="card-text">Control de stock y pedidos.</p>
-                    <a href="/inventory" class="btn btn-primary">Ver Inventario</a>
-                </div>
-            </div>
-        </div>
-        {% if is_admin %}
-        <div class="col-md-4 mb-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Usuarios</h5>
-                    <p class="card-text">Administrar usuarios del sistema.</p>
-                    <a href="/users" class="btn btn-primary">Gestionar Usuarios</a>
-                </div>
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 {% endblock %}

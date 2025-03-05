@@ -1,48 +1,67 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
-from app.routes import (
-    auth,
-    main,
-    inventory,
-    schedule,
-    daily_cash,
-    cash_register,
-    orders,
-    users
-)
-from app.database import init_db
+from fastapi.responses import RedirectResponse
+from app.routes import router
+from app.database import get_db  # Add this import
 import logging
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.info("Initializing application...")
 
 app = FastAPI()
-
-# Add session middleware
-app.add_middleware(
-    SessionMiddleware,
-    secret_key="your-secret-key-here"
-)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# Include all routers
-app.include_router(auth.router)
-app.include_router(main.router)
-app.include_router(inventory.router)
-app.include_router(schedule.router)
-app.include_router(daily_cash.router)
-app.include_router(cash_register.router)
-app.include_router(orders.router)
-app.include_router(users.router)
+# Add middleware to check authentication
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    # List of paths that don't require authentication
+    public_paths = [
+        "/login",
+        "/static",
+        "/favicon.ico"
+    ]
+    
+    # Check if path starts with any public path
+    is_public = any(
+        request.url.path.startswith(path) 
+        for path in public_paths
+    )
+    
+    # Allow access to public paths
+    if is_public:
+        return await call_next(request)
+
+    # Check for access token
+    token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse(url="/login", status_code=303)
+        
+    try:
+        # Verify token
+        db = await get_db()
+        token_exists = await db.active_tokens.find_one({"token": token})
+        if not token_exists:
+            return RedirectResponse(url="/login", status_code=303)
+    except Exception as e:
+        logger.error(f"Auth middleware error: {str(e)}")
+        return RedirectResponse(url="/login", status_code=303)
+
+    return await call_next(request)
+
+# Include all routes
+app.include_router(router)
 
 @app.get("/")
-async def root():
+async def root(request: Request):
+    # Check if user is logged in
+    token = request.cookies.get("access_token")
+    if token:
+        return RedirectResponse(url="/dashboard")
     return RedirectResponse(url="/login")
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Initializing application...")
-    await init_db()
+@app.exception_handler(500)
+async def internal_error(request: Request, exc: Exception):
+    logger.error(f"Internal error: {str(exc)}")
+    return RedirectResponse(url="/login")
