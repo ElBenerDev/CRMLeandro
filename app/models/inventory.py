@@ -2,6 +2,14 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
+class WeeklyCount(BaseModel):
+    count_date: datetime
+    counted_by: str
+    previous_stock: float
+    current_stock: float
+    difference: float
+    notes: Optional[str] = None
+
 class InventoryItem(BaseModel):
     name: str
     current_stock: float = 0.0
@@ -9,6 +17,8 @@ class InventoryItem(BaseModel):
     to_order: Optional[float] = None
     presentation: str
     supplier: str
+    last_count: Optional[datetime] = None
+    weekly_counts: List[WeeklyCount] = []
 
 class ArrivalControl(BaseModel):
     product: str

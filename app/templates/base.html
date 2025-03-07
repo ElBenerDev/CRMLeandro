@@ -10,7 +10,7 @@
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
     <!-- Custom CSS -->
-    <link href="{{ url_for('static', path='css/style.css') }}" rel="stylesheet">
+    <link href="/static/css/style.css" rel="stylesheet">
     
     {% block head %}{% endblock %}
 </head>
@@ -20,9 +20,9 @@
         <div class="container-fluid">
             <div class="d-flex justify-content-end">
                 {% if request.url.path != "/login" %}
+                    <span class="me-3">{{ request.state.user.username }}</span>
                     <a href="{{ url_for('auth.logout') }}" class="login-btn">
-                        <i class="fas fa-sign-out-alt"></i> 
-                        <span class="d-none d-sm-inline">Logout</span>
+                        <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
                     </a>
                 {% endif %}
             </div>
@@ -30,36 +30,31 @@
     </div>
 
     <!-- Main Header -->
+    {% if request.url.path != "/login" %}
     <header class="main-header">
-        <div class="container-fluid">
-            <nav class="navbar navbar-expand-lg">
-                <div class="navbar-brand">
-                    <a href="/">
-                        <img src="{{ url_for('static', path='images/logo.png') }}" alt="CRM Leandro" height="60">
-                    </a>
-                </div>
-                
-                {% if request.url.path != "/login" %}
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                
-                <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav ms-auto">
+        <nav class="navbar">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="/">
+                    <img src="/static/images/logo.png" alt="Logo">
+                </a>
+                <ul class="nav-list">
+                    {% if request.state.user.is_admin %}
                         <li class="nav-item"><a class="nav-link" href="/dashboard">Dashboard</a></li>
-                        <li class="nav-item"><a class="nav-link" href="/inventory">Productos</a></li>
+                    {% endif %}
+                    <li class="nav-item"><a class="nav-link" href="/inventory">Productos</a></li>
+                    {% if request.state.user.is_admin %}
                         <li class="nav-item"><a class="nav-link" href="/orders">Órdenes</a></li>
                         <li class="nav-item"><a class="nav-link" href="/cash-register">Caja</a></li>
                         <li class="nav-item"><a class="nav-link" href="/daily-cash">Reportes</a></li>
                         <li class="nav-item"><a class="nav-link" href="/users">Usuarios</a></li>
-                    </ul>
-                </div>
-                {% endif %}
-            </nav>
-        </div>
+                    {% endif %}
+                </ul>
+            </div>
+        </nav>
     </header>
+    {% endif %}
 
-    <main class="py-4">
+    <main>
         <div class="container-fluid">
             {% block content %}{% endblock %}
         </div>

@@ -17,17 +17,12 @@ templates = Jinja2Templates(directory="app/templates")
 @web_router.get("/cash-register", name="cash_register.index")
 async def cash_register_page(request: Request):
     try:
-        db = await get_db()
-        # Get token from cookie
-        token = request.cookies.get("access_token")
-        if not token:
-            return RedirectResponse(url="/login", status_code=303)
+        # Get user from request state (set by middleware)
+        user = request.state.user
+        if not user.get("is_admin"):
+            return RedirectResponse(url="/inventory", status_code=303)
             
-        # Verify token and get user info
-        token_data = await db.active_tokens.find_one({"token": token})
-        if not token_data:
-            return RedirectResponse(url="/login", status_code=303)
-
+        db = await get_db()
         # Get cash register entries
         entries = await db.cash_register.find().sort("date", -1).to_list(100)
         return templates.TemplateResponse(
@@ -36,7 +31,7 @@ async def cash_register_page(request: Request):
                 "request": request, 
                 "entries": entries,
                 "today": date.today(),
-                "is_admin": token_data.get("is_admin", False)
+                "is_admin": True  # We know it's admin since we checked above
             }
         )
     except Exception as e:

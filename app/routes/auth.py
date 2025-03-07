@@ -40,78 +40,57 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @web_router.get("/login", name="auth.login")
 async def login_page(request: Request):
+    logger.debug("Rendering login page")
     return templates.TemplateResponse(
         "login.html", 
         {"request": request}
     )
 
-@web_router.post("/login", name="auth.login_post")
-async def login(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...)
-):
+@web_router.post("/login")
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     try:
         db = await get_db()
+        # Find the user
         user = await db.users.find_one({"username": username})
         
-        if not user or not pwd_context.verify(password, user["password"]):
+        if not user or not pwd_context.verify(password, user["password"]):  # Changed from hashed_password to password
             return templates.TemplateResponse(
                 "login.html",
-                {"request": request, "error": "Invalid credentials"},
-                status_code=400
+                {"request": request, "error": "Invalid username or password"},
+                status_code=401
             )
-
-        # Generate token
-        token = secrets.token_urlsafe(32)
         
-        # Store token in database
-        await db.active_tokens.insert_one({
-            "token": token,
-            "username": username,
-            "is_admin": user.get("is_admin", False)
-        })
+        # Create response with redirect
+        response = RedirectResponse(
+            url="/inventory" if not user.get("is_admin") else "/dashboard",
+            status_code=303
+        )
         
-        # Create response with token cookie
-        response = RedirectResponse(url="/dashboard", status_code=303)
+        # Set session cookie
         response.set_cookie(
             key="access_token",
-            value=token,
-            httponly=True,
-            max_age=3600,  # 1 hour
-            path="/"
+            value=str(user["_id"]),  # Convert ObjectId to string
+            httponly=True
         )
         
         return response
+        
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Login failed"},
-            status_code=400
+            {"request": request, "error": "An error occurred during login"}
         )
 
 @web_router.get("/logout", name="auth.logout")
 async def logout(request: Request):
     try:
-        # Remove token from database
-        db = await get_db()
-        token = request.cookies.get("access_token")
-        if token:
-            await db.active_tokens.delete_one({"token": token})
-        
-        # Create response that clears cookie
-        response = RedirectResponse(url="/login")
+        response = RedirectResponse(url="/login", status_code=303)
         response.delete_cookie(key="access_token", path="/")
         return response
     except Exception as e:
         logger.error(f"Logout error: {str(e)}")
-        return RedirectResponse(url="/login")
-
-@web_router.post("/logout")
-async def logout(response: Response):
-    response.delete_cookie("access_token")
-    return {"message": "Logged out successfully"}
+        return RedirectResponse(url="/login", status_code=303)
 
 @web_router.get("/dashboard")
 async def dashboard(request: Request):

@@ -1,67 +1,79 @@
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
 from app.routes import router
-from app.database import get_db  # Add this import
+from app.database import get_db, init_db
+from app.middleware.auth_middleware import verify_permissions
 import logging
 
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 logger.info("Initializing application...")
 
-app = FastAPI()
+# Create FastAPI app
+app = FastAPI(
+    title="CRM Leandro",
+    description="Sistema de gestión para Leandro",
+    version="1.0.0"
+)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# Add middleware to check authentication
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    # List of paths that don't require authentication
-    public_paths = [
-        "/login",
-        "/static",
-        "/favicon.ico"
-    ]
-    
-    # Check if path starts with any public path
-    is_public = any(
-        request.url.path.startswith(path) 
-        for path in public_paths
-    )
-    
-    # Allow access to public paths
-    if is_public:
-        return await call_next(request)
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    # Check for access token
-    token = request.cookies.get("access_token")
-    if not token:
-        return RedirectResponse(url="/login", status_code=303)
-        
-    try:
-        # Verify token
-        db = await get_db()
-        token_exists = await db.active_tokens.find_one({"token": token})
-        if not token_exists:
-            return RedirectResponse(url="/login", status_code=303)
-    except Exception as e:
-        logger.error(f"Auth middleware error: {str(e)}")
-        return RedirectResponse(url="/login", status_code=303)
-
-    return await call_next(request)
+# Add auth middleware
+app.middleware("http")(verify_permissions)
 
 # Include all routes
 app.include_router(router)
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup"""
+    logger.info("Running startup tasks...")
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {str(e)}")
+        raise
+
 @app.get("/")
 async def root(request: Request):
+    # Debug logging
+    logger.debug("Accessing root path")
     # Check if user is logged in
     token = request.cookies.get("access_token")
     if token:
+        logger.debug("Token found, redirecting to dashboard")
         return RedirectResponse(url="/dashboard")
-    return RedirectResponse(url="/login")
+    logger.debug("No token found, redirecting to login")
+    return RedirectResponse(url="/login", status_code=303)
 
 @app.exception_handler(500)
 async def internal_error(request: Request, exc: Exception):
     logger.error(f"Internal error: {str(exc)}")
-    return RedirectResponse(url="/login")
+    return RedirectResponse(url="/login", status_code=303)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="127.0.0.1",
+        port=8000,
+        reload=True,
+        log_level="debug"
+    )

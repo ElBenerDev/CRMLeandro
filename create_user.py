@@ -2,18 +2,17 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.server_api import ServerApi
 from passlib.context import CryptContext
 from dotenv import load_dotenv
-from datetime import datetime  # Add this import
+from datetime import datetime
 import os
 import asyncio
 import logging
-import bcrypt  # Add this import
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-async def create_admin():
+async def create_user():
     client = None
     try:
         # Load MongoDB Atlas connection string
@@ -34,33 +33,27 @@ async def create_admin():
         await db.command("ping")
         logger.info("✅ Connected to MongoDB Atlas!")
         
-        # Create admin user with current timestamp
-        admin_data = {
-            "username": "admin",
-            "password": pwd_context.hash("admin123"),  # We store it as "password"
-            "is_admin": True,
+        # Create regular user with current timestamp
+        user_data = {
+            "username": "user",
+            "password": pwd_context.hash("user123"),
+            "is_admin": False,
+            "permissions": ["view_inventory"],
             "active": True,
-            "created_at": datetime.utcnow()  # Use UTC time
+            "created_at": datetime.utcnow()
         }
         
-        # Create users collection if it doesn't exist
-        collections = await db.list_collection_names()
-        if "users" not in collections:
-            await db.create_collection("users")
-            await db.users.create_index("username", unique=True)
-            logger.info("✅ Users collection created")
-        
-        # Check if admin exists
-        existing = await db.users.find_one({"username": "admin"})
+        # Check if user exists
+        existing = await db.users.find_one({"username": "user"})
         if not existing:
-            await db.users.insert_one(admin_data)
-            logger.info("✅ Admin user created successfully")
+            await db.users.insert_one(user_data)
+            logger.info("✅ Regular user created successfully")
         else:
             await db.users.update_one(
-                {"username": "admin"},
-                {"$set": admin_data}
+                {"username": "user"},
+                {"$set": user_data}
             )
-            logger.info("✅ Admin user updated successfully")
+            logger.info("✅ Regular user updated successfully")
             
     except Exception as e:
         logger.error(f"❌ Error: {str(e)}")
@@ -71,4 +64,4 @@ async def create_admin():
             logger.info("Database connection closed")
 
 if __name__ == "__main__":
-    asyncio.run(create_admin())
+    asyncio.run(create_user())

@@ -512,5 +512,16 @@ async def get_db():
 async def close_db_connection():
     client.close()
 
+async def init_db():
+    db = await get_db()
+    
+    # Ensure indexes
+    await db.count_sessions.create_index([
+        ("user_id", 1),
+        ("status", 1)
+    ])
+    
+    await db.inventory.create_index("name", unique=True)
+
 # Export only what's needed
-__all__ = ['db', 'get_db', 'close_db_connection']
+__all__ = ['db', 'get_db', 'close_db_connection', 'init_db']
