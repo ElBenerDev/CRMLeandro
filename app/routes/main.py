@@ -43,19 +43,6 @@ async def users(request: Request):
             "error": "Error loading users data"
         })
 
-@web_router.get("/inventory")
-async def inventory_page(request: Request):
-    try:
-        db = await get_db()
-        inventory_items = await db.inventory.find().to_list(None)
-        return templates.TemplateResponse("inventory.html", {
-            "request": request,
-            "inventory": inventory_items
-        })
-    except Exception as e:
-        logger.error(f"Inventory error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @web_router.get("/schedule")
 async def schedule_page(request: Request):
     logger.debug("Accessing schedule page")

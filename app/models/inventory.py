@@ -14,11 +14,17 @@ class InventoryItem(BaseModel):
     name: str
     current_stock: float = 0.0
     unit: str
-    to_order: Optional[float] = None
-    presentation: str
+    to_order: float = 0
     supplier: str
+    category: str = "Sin Categoría"
+    min_stock: float = 0
+    max_stock: float = 0
+    last_updated: Optional[datetime] = None
+    last_updated_by: Optional[str] = None
     last_count: Optional[datetime] = None
-    weekly_counts: List[WeeklyCount] = []
+
+    class Config:
+        from_attributes = True
 
 class ArrivalControl(BaseModel):
     product: str
