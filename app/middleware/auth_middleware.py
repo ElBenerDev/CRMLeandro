@@ -6,31 +6,33 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Update ADMIN_ONLY_ROUTES to include cash register again
+# Remove cash register from ADMIN_ONLY_ROUTES
 ADMIN_ONLY_ROUTES = [
     "/users",
     "/dashboard",
     "/daily_cash",
     "/orders",
-    "/schedule",
-    "/cash-register",  # Add back to admin-only routes
-    "/api/cash-register"  # Add API routes too
+    "/schedule"
 ]
 
-# Remove cash register from shared routes
+# Add cash register to SHARED_ROUTES
 SHARED_ROUTES = [
     "/inventory",
-    "/api/inventory"
+    "/api/inventory",
+    "/cash-register",
+    "/api/cash-register"
 ]
 
-# Remove cash register permissions from regular users
+# Add cash register permissions to regular users
 USER_PERMISSIONS = {
     "user": [
         "view_inventory",
         "add_stock",
         "search_inventory",
         "sort_inventory",
-        "perform_count"
+        "perform_count",
+        "view_cash_register",     # Add cash register permission
+        "manage_cash_register"    # Add cash register management permission
     ],
     "admin": ["all"]
 }
