@@ -6,21 +6,34 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Define route permissions
+# Update ADMIN_ONLY_ROUTES to include cash register again
 ADMIN_ONLY_ROUTES = [
     "/users",
     "/dashboard",
     "/daily_cash",
-    "/cash_register",
     "/orders",
-    "/schedule"
+    "/schedule",
+    "/cash-register",  # Add back to admin-only routes
+    "/api/cash-register"  # Add API routes too
 ]
 
-# Routes that both admin and regular users can access, but with different permissions
+# Remove cash register from shared routes
 SHARED_ROUTES = [
     "/inventory",
-    "/api/inventory"  # Add this to allow API access
+    "/api/inventory"
 ]
+
+# Remove cash register permissions from regular users
+USER_PERMISSIONS = {
+    "user": [
+        "view_inventory",
+        "add_stock",
+        "search_inventory",
+        "sort_inventory",
+        "perform_count"
+    ],
+    "admin": ["all"]
+}
 
 async def verify_permissions(request: Request, call_next):
     # Public paths that don't require authentication
@@ -46,7 +59,7 @@ async def verify_permissions(request: Request, call_next):
         request.state.user = {
             "username": user["username"],
             "is_admin": user.get("is_admin", False),
-            "permissions": ["view_inventory", "perform_count"] if not user.get("is_admin") else ["all"],
+            "permissions": USER_PERMISSIONS["admin"] if user.get("is_admin") else USER_PERMISSIONS["user"],
             "_id": str(user["_id"]),
             "role": user.get("role", "user")
         }
@@ -78,6 +91,53 @@ async def verify_permissions(request: Request, call_next):
         return RedirectResponse(url="/login", status_code=303)
 
     return await call_next(request)
+
+async def check_permissions(request: Request):
+    """Check user permissions for the current route"""
+    try:
+        token = request.cookies.get("access_token")
+        if not token:
+            return False
+
+        db = await get_db()
+        token_data = await db.active_tokens.find_one({"token": token})
+        
+        if not token_data:
+            return False
+
+        user = await db.users.find_one({"_id": ObjectId(token_data["user_id"])})
+        
+        if not user:
+            return False
+
+        # Store user state in request
+        request.state.user = {
+            "username": user["username"],
+            "is_admin": user.get("role") == "admin",
+            "permissions": USER_PERMISSIONS.get(user.get("role", "user"), []),
+            "_id": str(user["_id"]),
+            "role": user.get("role", "user")
+        }
+
+        path = request.url.path
+        
+        # Allow access to shared routes
+        if path in SHARED_ROUTES:
+            return True
+            
+        # Admin has access to everything
+        if user.get("role") == "admin":
+            return True
+            
+        # Check specific route permissions
+        if path.startswith("/cash-register"):
+            return "view_cash_register" in request.state.user["permissions"]
+
+        return False
+
+    except Exception as e:
+        logger.error(f"Permission check error: {str(e)}")
+        return False
 
 from passlib.context import CryptContext
 import bcrypt

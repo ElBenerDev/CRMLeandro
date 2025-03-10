@@ -24,7 +24,7 @@
                 <h1>Control de Inventario</h1>
             </div>
             <div class="col-auto">
-                {% if not is_admin %}
+                {% if not is_admin and 'perform_count' in request.state.user.permissions %}
                     <button class="btn btn-success" id="startWeeklyCount">
                         <i class="fas fa-clipboard-check"></i> Realizar Conteo Semanal
                     </button>
@@ -36,7 +36,7 @@
             <div class="card-body">
                 <!-- Search and filters -->
                 <div class="row mb-3">
-                    <div class="col-md-6">
+                    <div class="col">
                         <div class="search-container">
                             <div class="search-input-group">
                                 <i class="fas fa-search"></i>
@@ -53,13 +53,8 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <select id="categoryFilter" class="form-select">
-                            <option value="">Todas las categorías</option>
-                        </select>
-                    </div>
                     {% if is_admin %}
-                    <div class="col-md-3 text-end">
+                    <div class="col-auto">
                         <button class="btn btn-primary" id="addItemButton" data-bs-toggle="modal" data-bs-target="#addItemModal">
                             <i class="fas fa-plus"></i> Agregar Item
                         </button>
@@ -109,9 +104,19 @@
                                             data-bs-target="#stockMovementModal"
                                             data-item-id="{{ item._id }}"
                                             data-item-name="{{ item.name }}"
-                                            title="Modificar Stock">
-                                        <i class="fas fa-cubes"></i>
+                                            title="{% if is_admin %}Modificar Stock{% else %}Agregar Stock{% endif %}">
+                                        <i class="fas fa-{% if is_admin %}cubes{% else %}plus{% endif %}"></i>
                                     </button>
+                                    {% if is_admin %}
+                                    <button class="btn btn-outline-secondary btn-sm stock-set" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#setStockModal"
+                                            data-item-id="{{ item._id }}"
+                                            data-item-name="{{ item.name }}"
+                                            title="Modificar Stock Total">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -163,6 +168,36 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="button" class="btn btn-primary" id="saveMovement">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Set Stock Modal -->
+        <div class="modal fade" id="setStockModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Modificar Stock Total</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form class="set-stock-form" onsubmit="return false;">
+                            <input type="hidden" name="item_id" id="setItemId">
+                            <div class="mb-3">
+                                <label for="setStockQuantity" class="form-label">Stock Total</label>
+                                <input type="number" class="form-control" id="setStockQuantity" name="quantity" required step="0.1">
+                            </div>
+                            <div class="mb-3">
+                                <label for="setStockNotes" class="form-label">Notas</label>
+                                <textarea class="form-control" id="setStockNotes" name="notes" required 
+                                        placeholder="Razón de la modificación"></textarea>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="saveSetStock">Guardar</button>
                     </div>
                 </div>
             </div>
@@ -245,6 +280,47 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="button" class="btn btn-primary" id="saveNewItem">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Weekly Count Modal -->
+        <div class="modal fade" id="weeklyCountModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Conteo Semanal de Inventario</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> 
+                            Ingrese las cantidades actuales de cada item. Los items que estén por debajo del mínimo serán marcados para reorden.
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Stock Actual</th>
+                                        <th>Stock Contado</th>
+                                        <th>Unidad</th>
+                                        <th>Mínimo</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="weeklyCountTable"></tbody>
+                            </table>
+                        </div>
+                        <div class="mb-3">
+                            <label for="weeklyCountNotes" class="form-label">Notas del Conteo</label>
+                            <textarea class="form-control" id="weeklyCountNotes" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="saveWeeklyCount">Guardar Conteo</button>
                     </div>
                 </div>
             </div>

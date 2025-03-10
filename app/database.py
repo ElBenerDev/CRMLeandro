@@ -515,13 +515,17 @@ async def close_db_connection():
 async def init_db():
     db = await get_db()
     
-    # Ensure indexes
+    # Ensure indexes for existing collections
     await db.count_sessions.create_index([
         ("user_id", 1),
         ("status", 1)
     ])
     
     await db.inventory.create_index("name", unique=True)
+
+    # Initialize cash register collections
+    from scripts.init_cash_register import init_cash_register_collections
+    await init_cash_register_collections()
 
 # Export only what's needed
 __all__ = ['db', 'get_db', 'close_db_connection', 'init_db']

@@ -421,9 +421,18 @@ async def update_stock(item_id: str, request: Request):
         if not user:
             raise HTTPException(status_code=403, detail="Not authenticated")
             
+        # Check if user has permission to add stock
+        if "add_stock" not in user["permissions"] and not user.get("is_admin"):
+            raise HTTPException(status_code=403, detail="Not authorized to modify stock")
+
         body = await request.json()
-        new_stock = float(body.get("current_stock", 0))
         movement_type = body.get("movement_type", "add")
+        
+        # Regular users can only add stock
+        if not user.get("is_admin") and movement_type != "add":
+            raise HTTPException(status_code=403, detail="Regular users can only add stock")
+
+        new_stock = float(body.get("current_stock", 0))
         notes = body.get("notes", "")
         
         db = await get_db()
@@ -435,10 +444,6 @@ async def update_stock(item_id: str, request: Request):
             
         current_stock = item.get("current_stock", 0)
         
-        # Regular users can only add stock
-        if not user.get("is_admin") and movement_type != "add":
-            raise HTTPException(status_code=403, detail="Only admins can reduce stock")
-
         # Calculate stock change
         quantity = abs(new_stock - current_stock)
         if movement_type == "subtract":
@@ -670,9 +675,9 @@ async def submit_weekly_count(request: Request):
     """Handle weekly inventory count submission"""
     try:
         user = request.state.user
-        if not user or 'perform_count' not in user.get('permissions', []):
-            raise HTTPException(status_code=403, detail="Not authorized to perform count")
-            
+        if not user:
+            raise HTTPException(status_code=403, detail="Not authenticated")
+
         data = await request.json()
         logger.debug(f"Received weekly count data: {data}")
 
@@ -688,6 +693,7 @@ async def submit_weekly_count(request: Request):
         # Create weekly count record
         count_session = {
             "user_id": ObjectId(user["_id"]),
+            "username": user["username"],
             "count_date": datetime.utcnow(),
             "items": items,
             "notes": notes,
@@ -699,71 +705,48 @@ async def submit_weekly_count(request: Request):
 
         # Update inventory and record movements
         for item in items:
-            item_id = ObjectId(item["item_id"])
-            current_stock = float(item["current_stock"])
-            counted_stock = float(item["counted_stock"])
-            difference = counted_stock - current_stock
-            
-            # Get full item details to check min_stock
-            inventory_item = await db.inventory.find_one({"_id": item_id})
-            if not inventory_item:
-                continue
-                
-            min_stock = float(inventory_item.get("min_stock", 0))
-            
-            # Check if new stock is below minimum
-            if counted_stock <= min_stock:
-                suggested_order = min_stock - counted_stock + 5  # Order buffer of 5 units
-                items_below_min.append({
-                    "item_id": str(item_id),
-                    "name": inventory_item["name"],
-                    "current_stock": counted_stock,
-                    "min_stock": min_stock,
-                    "supplier": inventory_item["supplier"],
-                    "unit": inventory_item["unit"],
-                    "suggested_order": suggested_order,
-                    "status": "pending"
-                })
-            
-            # Update stock
-            await db.inventory.update_one(
-                {"_id": item_id},
-                {"$set": {
-                    "current_stock": counted_stock,
-                    "last_count": datetime.utcnow(),
-                    "last_updated": datetime.utcnow()
-                }}
-            )
+            item_id = item["item_id"]
+            current_stock = item["current_stock"]
+            counted_stock = item["counted_stock"]
             
             # Record movement
-            await db.stock_movements.insert_one({
-                "item_id": item_id,
+            movement = {
+                "item_id": ObjectId(item_id),
                 "user_id": ObjectId(user["_id"]),
-                "quantity": difference,
+                "username": user["username"],
+                "quantity": counted_stock - current_stock,
                 "previous_stock": current_stock,
                 "new_stock": counted_stock,
                 "timestamp": datetime.utcnow(),
-                "notes": f"Ajuste por conteo semanal: {notes}",
-                "username": user["username"],
-                "type": "weekly_count"
-            })
+                "notes": f"Conteo semanal: {notes}",
+                "movement_type": "count"
+            }
             
-            logger.info(f"Updated item {item_id}: {current_stock} -> {counted_stock} (diff: {difference})")
+            await db.stock_movements.insert_one(movement)
+            
+            # Update stock
+            await db.inventory.update_one(
+                {"_id": ObjectId(item_id)},
+                {"$set": {
+                    "current_stock": counted_stock,
+                    "last_count": datetime.utcnow(),
+                    "last_counted_by": user["username"]
+                }}
+            )
+
+            # Check if item needs reordering
+            if counted_stock <= float(item.get("min_stock", 0)):
+                items_below_min.append(item_id)
 
         # Create order suggestions document if items need reordering
         if items_below_min:
-            suggestion_doc = {
+            await db.order_suggestions.insert_one({
                 "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "count_session_id": result.inserted_id,
-                "items": items_below_min,
-                "status": "pending",
                 "created_by": user["username"],
-                "type": "weekly_count"
-            }
-            
-            await db.order_suggestions.insert_one(suggestion_doc)
-            logger.info(f"Created order suggestions for {len(items_below_min)} items")
+                "source": "weekly_count",
+                "items": items_below_min,
+                "status": "pending"
+            })
         
         return JSONResponse({
             "success": True,
@@ -808,44 +791,82 @@ async def search_inventory_items(request: Request, q: str):
         
 # Add this new route
 @router.get("/api/inventory/categories")
-async def get_categories():
+async def get_categories(request: Request):
     """Get all available categories"""
     try:
+        user = request.state.user
+        if not user:
+            raise HTTPException(status_code=403, detail="Not authenticated")
+
         db = await get_db()
-        # Get unique categories from inventory
+        
+        # Combine default categories with any custom ones from the database
         existing_categories = await db.inventory.distinct("category")
-        # Combine with default categories and remove duplicates
         all_categories = list(set(filter(None, existing_categories + DEFAULT_CATEGORIES)))
-        return {"categories": sorted(all_categories)}
+        
+        return {
+            "categories": sorted(all_categories),
+            "default_categories": sorted(DEFAULT_CATEGORIES)
+        }
     except Exception as e:
         logger.error(f"Error fetching categories: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-        
+
 # Add this route to update an item's category
 @router.patch("/api/inventory/{item_id}/category")
 async def update_category(item_id: str, request: Request):
+    """Update an item's category"""
     try:
+        # Check user authentication and admin status
+        user = request.state.user
+        if not user or not user.get('is_admin'):
+            raise HTTPException(status_code=403, detail="Admin access required")
+
+        # Get request body
         body = await request.json()
         new_category = body.get("category")
+        
         if not new_category:
             raise HTTPException(status_code=400, detail="Category is required")
 
         db = await get_db()
+        
+        # Get current item for logging
+        current_item = await db.inventory.find_one({"_id": ObjectId(item_id)})
+        if not current_item:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        # Update the category
         result = await db.inventory.update_one(
             {"_id": ObjectId(item_id)},
             {"$set": {
                 "category": new_category,
                 "last_updated": datetime.utcnow(),
-                "last_updated_by": request.state.user["username"]
+                "last_updated_by": user["username"]
             }}
         )
 
         if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Item not found")
+            raise HTTPException(status_code=404, detail="Item not found or category unchanged")
 
-        return {"success": True, "category": new_category}
+        # Log the category change
+        logger.info(
+            f"Category updated for item {current_item['name']} "
+            f"from '{current_item.get('category', 'None')}' to '{new_category}' "
+            f"by {user['username']}"
+        )
+
+        return {
+            "success": True,
+            "item_id": str(item_id),
+            "category": new_category,
+            "message": "Category updated successfully"
+        }
+        
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        logger.error(f"Error updating category: {e}")
+        logger.error(f"Error updating category: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/inventory/{item_id}/movement")
@@ -959,4 +980,62 @@ async def get_item_movements(item_id: str, request: Request):
 
     except Exception as e:
         logger.error(f"Error getting movements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/inventory/{item_id}/set-stock")
+async def set_stock(item_id: str, request: Request):
+    """Set absolute stock value for an item"""
+    try:
+        user = request.state.user
+        if not user or not user.get('is_admin'):
+            raise HTTPException(status_code=403, detail="Admin access required")
+            
+        body = await request.json()
+        new_stock = float(body.get("new_stock", 0))
+        notes = body.get("notes")
+        
+        db = await get_db()
+        
+        # Get current item
+        item = await db.inventory.find_one({"_id": ObjectId(item_id)})
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+            
+        current_stock = item.get("current_stock", 0)
+        stock_difference = new_stock - current_stock
+
+        # Record movement
+        movement = {
+            "item_id": ObjectId(item_id),
+            "item_name": item["name"],
+            "user_id": ObjectId(user["_id"]),
+            "username": user["username"],
+            "quantity": stock_difference,
+            "previous_stock": current_stock,
+            "new_stock": new_stock,
+            "timestamp": datetime.utcnow(),
+            "notes": f"Ajuste manual: {notes}",
+            "movement_type": "set"
+        }
+        
+        await db.stock_movements.insert_one(movement)
+        
+        # Update stock
+        await db.inventory.update_one(
+            {"_id": ObjectId(item_id)},
+            {"$set": {
+                "current_stock": new_stock,
+                "last_updated": datetime.utcnow(),
+                "last_updated_by": user["username"]
+            }}
+        )
+
+        return {
+            "success": True,
+            "new_stock": new_stock,
+            "difference": stock_difference
+        }
+        
+    except Exception as e:
+        logger.error(f"Error setting stock: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

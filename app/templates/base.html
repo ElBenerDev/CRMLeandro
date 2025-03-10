@@ -43,8 +43,8 @@
                     {% endif %}
                     <li class="nav-item"><a class="nav-link" href="/inventory">Productos</a></li>
                     {% if request.state.user.is_admin %}
-                        <li class="nav-item"><a class="nav-link" href="/orders">Órdenes</a></li>
                         <li class="nav-item"><a class="nav-link" href="/cash-register">Caja</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/orders">Órdenes</a></li>
                         <li class="nav-item"><a class="nav-link" href="/daily-cash">Reportes</a></li>
                         <li class="nav-item"><a class="nav-link" href="/users">Usuarios</a></li>
                     {% endif %}

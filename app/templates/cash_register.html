@@ -5,101 +5,199 @@
 {% block content %}
 <div class="container-fluid">
     <h1 class="text-center mb-4">PLANILLA DE CAJA</h1>
-
+    
+    <!-- Control Buttons -->
     <div class="cash-register-controls mb-4">
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newEntryModal">
-            Nueva Entrada
+        <button class="btn btn-primary" id="startDayBtn" data-bs-toggle="modal" data-bs-target="#startDayModal">
+            <i class="fas fa-play"></i> Iniciar Día
+        </button>
+        <button class="btn btn-info ms-2" id="addTransactionBtn" disabled>
+            <i class="fas fa-plus"></i> Nueva Transacción
+        </button>
+        <button class="btn btn-warning ms-2" id="closeDayBtn" disabled>
+            <i class="fas fa-check-circle"></i> Cerrar Día
         </button>
         <button class="btn btn-success ms-2" onclick="exportToExcel()">
-            Exportar a Excel
+            <i class="fas fa-file-excel"></i> Exportar
         </button>
-        <a href="{{ url_for('inventory.index') }}" class="btn btn-secondary">
-            <i class="fas fa-arrow-left"></i> Volver al Inventario
-        </a>
     </div>
 
-    <div class="table-responsive">
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>FECHA</th>
-                    <th>ENTRADA</th>
-                    <th>INGRESOS</th>
-                    <th>GASTOS</th>
-                    <th>DETALLES</th>
-                    <th>CAJA FUERTE</th>
-                    <th>RESPONSABLE</th>
-                    <th>ACCIONES</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for entry in entries %}
-                <tr>
-                    <td>{{ entry.date.strftime('%d/%m/%Y') }}</td>
-                    <td class="text-end">${{ "%.2f"|format(entry.initial_amount) }}</td>
-                    <td class="text-end">${{ "%.2f"|format(entry.income) }}</td>
-                    <td class="text-end">${{ "%.2f"|format(entry.expenses) }}</td>
-                    <td>{{ entry.details or '' }}</td>
-                    <td class="text-end">${{ "%.2f"|format(entry.safe_balance) }}</td>
-                    <td>{{ entry.responsible }}</td>
-                    <td>
-                        <button class="btn btn-sm btn-warning" onclick="editEntry('{{ entry._id }}')">
-                            Editar
-                        </button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <!-- Daily Status Card -->
+    <div class="card mb-4" id="dailyStatusCard" style="display: none;">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Estado del Día</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Monto Inicial:</label>
+                        <h4 id="initialCountDisplay">$0.00</h4>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Total Ingresos:</label>
+                        <h4 id="salesDisplay" class="text-success">$0.00</h4>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Total Gastos:</label>
+                        <h4 id="expensesDisplay" class="text-danger">$0.00</h4>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label class="form-label text-muted">Balance Actual:</label>
+                        <h4 id="currentBalanceDisplay">$0.00</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
 
-<!-- New Entry Modal -->
-<div class="modal fade" id="newEntryModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Nueva Entrada de Caja</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <!-- Transactions Table -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Transacciones</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Hora</th>
+                            <th>Tipo</th>
+                            <th>Descripción</th>
+                            <th class="text-end">Monto</th>
+                            <th class="text-end">Balance</th>
+                            <th>Responsable</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsTableBody">
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="fas fa-info-circle me-2"></i>
+                                No hay transacciones registradas
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-            <div class="modal-body">
-                <form id="cashEntryForm">
-                    <div class="mb-3">
-                        <label for="date">Fecha</label>
-                        <input type="date" id="date" name="date" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="income">Ingresos</label>
-                        <input type="number" id="income" name="income" step="0.01" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="expenses">Gastos</label>
-                        <input type="number" id="expenses" name="expenses" step="0.01" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="details">Detalles</label>
-                        <textarea id="details" name="details" class="form-control"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label for="responsible">Responsable</label>
-                        <select id="responsible" name="responsible" class="form-control" required>
-                            <option value="ONE">ONE</option>
-                            <option value="MERLIN">MERLIN</option>
-                            <option value="KEIDY">KEIDY</option>
-                        </select>
-                    </div>
-                </form>
+        </div>
+    </div>
+
+    <!-- Start Day Modal -->
+    <div class="modal fade" id="startDayModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Iniciar Día</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="startDayForm">
+                        <div class="mb-3">
+                            <label class="form-label">Monto Inicial:</label>
+                            <input type="number" class="form-control" id="initial_amount_counted" step="0.01" required>
+                            <div id="initialAmountStatus"></div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Responsable:</label>
+                            <input type="text" class="form-control" id="responsible" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Notas:</label>
+                            <textarea class="form-control" id="startNotes" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="verifyAndStartBtn" disabled>Verificar e Iniciar</button>
+                </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="submit" form="cashEntryForm" class="btn btn-primary">Guardar</button>
+        </div>
+    </div>
+
+    <!-- Transaction Modal -->
+    <div class="modal fade" id="transactionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Nueva Transacción</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="transactionForm">
+                        <div class="mb-3">
+                            <label class="form-label d-block">Tipo:</label>
+                            <div class="btn-group" role="group">
+                                <input type="radio" class="btn-check" name="transactionType" id="typeIncome" value="income" checked>
+                                <label class="btn btn-outline-success" for="typeIncome">Ingreso</label>
+                                <input type="radio" class="btn-check" name="transactionType" id="typeExpense" value="expense">
+                                <label class="btn btn-outline-danger" for="typeExpense">Gasto</label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Monto:</label>
+                            <input type="number" class="form-control" id="amount" step="0.01" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Descripción:</label>
+                            <input type="text" class="form-control" id="description" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="saveTransactionBtn">Guardar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Close Day Modal -->
+    <div class="modal fade" id="closeDayModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Cerrar Día</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Balance esperado: <strong id="expectedBalance">$0.00</strong>
+                    </div>
+                    <form id="closeDayForm">
+                        <div class="mb-3">
+                            <label class="form-label">Monto Final Contado:</label>
+                            <input type="number" class="form-control" id="final_count" step="0.01" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Notas de Cierre:</label>
+                            <textarea class="form-control" id="closeNotes" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="confirmCloseBtn">Confirmar Cierre</button>
+                </div>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', path='js/cash_register.js') }}"></script>
+<script>
+    window.initialData = {
+        currentRegister: {{ current_register | tojson | safe if current_register else 'null' }},
+        transactions: {{ transactions | tojson | safe if transactions else '[]' }}
+    };
+</script>
 {% endblock %}
