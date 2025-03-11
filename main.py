@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes import router
 from app.database import get_db, init_db
 from app.middleware.auth_middleware import verify_permissions
+from app.scripts.init_cash_register import init_cash_register
 import logging
 
 # Configure logging
@@ -44,12 +45,9 @@ app.include_router(router)
 async def startup_event():
     """Initialize database on startup"""
     logger.info("Running startup tasks...")
-    try:
-        await init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {str(e)}")
-        raise
+    await init_db()
+    await init_cash_register()
+    logger.info("Database initialized successfully")
 
 @app.get("/")
 async def root(request: Request):

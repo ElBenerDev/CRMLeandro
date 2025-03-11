@@ -3,47 +3,142 @@
 {% block title %}Caja Diaria - CRM Leandro{% endblock %}
 
 {% block content %}
-<div class="daily-cash-container">
-    <h2>Caja Diaria</h2>
-    <div class="totals-summary">
-        <div class="total-item">
-            <div class="label">Total Ingresos</div>
-            <div class="amount">${{ "%.2f"|format(total_billing) }}</div>
+<div class="container-fluid mt-4">
+    <h2 class="mb-4">Resumen de Caja</h2>
+    
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Monto Inicial</h5>
+                    <h3>${{ "%.2f"|format(total_initial|default(0)) }}</h3>
+                </div>
+            </div>
         </div>
-        <div class="total-item">
-            <div class="label">Total Gastos</div>
-            <div class="amount">${{ "%.2f"|format(total_expenses) }}</div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Ingresos</h5>
+                    <h3>${{ "%.2f"|format(total_billing|default(0)) }}</h3>
+                </div>
+            </div>
         </div>
-        <div class="total-item">
-            <div class="label">Balance</div>
-            <div class="amount">${{ "%.2f"|format(total_balance) }}</div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Gastos</h5>
+                    <h3>${{ "%.2f"|format(total_expenses|default(0)) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Balance Final</h5>
+                    <h3>${{ "%.2f"|format(total_balance|default(0)) }}</h3>
+                </div>
+            </div>
         </div>
     </div>
-    <table class="daily-cash-table">
-        <thead>
-            <tr>
-                <th>Fecha</th>
-                <th>Monto Inicial</th>
-                <th>Ingresos</th>
-                <th>Gastos</th>
-                <th>Monto Final</th>
-                <th>Responsable</th>
-                <th>Detalles</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for entry in daily_cash %}
-            <tr>
-                <td>{{ entry.date.strftime('%Y-%m-%d %H:%M') }}</td>
-                <td>${{ "%.2f"|format(entry.initial_amount) }}</td>
-                <td>${{ "%.2f"|format(entry.billing) }}</td>
-                <td>${{ "%.2f"|format(entry.expenses) }}</td>
-                <td>${{ "%.2f"|format(entry.safe_amount) }}</td>
-                <td>{{ entry.responsible }}</td>
-                <td>{{ entry.details }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+
+    <!-- Daily Summary Table -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h4>Resumen Diario</h4>
+        </div>
+        <div class="card-body">
+            {% if daily_cash %}
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Monto Inicial</th>
+                        <th>Ingresos</th>
+                        <th>Gastos</th>
+                        <th>Monto Final</th>
+                        <th>Responsable</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in daily_cash %}
+                    <tr>
+                        <td>{{ entry.date.strftime('%Y-%m-%d') }}</td>
+                        <td>${{ "%.2f"|format(entry.initial_amount|default(0)) }}</td>
+                        <td>${{ "%.2f"|format(entry.billing|default(0)) }}</td>
+                        <td>${{ "%.2f"|format(entry.expenses|default(0)) }}</td>
+                        <td>${{ "%.2f"|format(entry.final_amount|default(0)) }}</td>
+                        <td>{{ entry.responsible }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-info" onclick="viewDetails('{{ entry._id }}')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center p-4">
+                <p class="text-muted">No hay registros de caja disponibles.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Transactions Detail Table -->
+    <div class="card">
+        <div class="card-header">
+            <h4>Detalle de Transacciones</h4>
+        </div>
+        <div class="card-body">
+            {% if transactions %}
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Fecha/Hora</th>
+                        <th>Tipo</th>
+                        <th>Monto</th>
+                        <th>Descripción</th>
+                        <th>Registrado por</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in transactions %}
+                    <tr>
+                        <td>{{ t.date.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            <span class="badge {% if t.type == 'income' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ t.type }}
+                            </span>
+                        </td>
+                        <td>${{ "%.2f"|format(t.amount) }}</td>
+                        <td>{{ t.description }}</td>
+                        <td>{{ t.recorded_by }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="text-center p-4">
+                <p class="text-muted">No hay transacciones disponibles.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function viewDetails(id) {
+    // Add your view details logic here
+    console.log('Viewing details for entry:', id);
+}
+</script>
 {% endblock %}
