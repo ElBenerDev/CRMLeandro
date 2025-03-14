@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from ..database import get_db
+from ..utils.constants import ROLES  # Add this import
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,21 +28,10 @@ async def dashboard(request: Request):
         "request": request,
     })
 
-@web_router.get("/users")
-async def users(request: Request):
-    try:
-        db = await get_db()
-        users_list = await db.users.find().to_list(None)
-        return templates.TemplateResponse("users.html", {
-            "request": request,
-            "users": users_list
-        })
-    except Exception as e:
-        logger.error(f"Users page error: {e}")
-        return templates.TemplateResponse("users.html", {
-            "request": request,
-            "error": "Error loading users data"
-        })
+# Remove this route since it's now in users.py
+# @web_router.get("/users")
+# async def users_page(request: Request):
+#     ...
 
 @web_router.get("/schedule")
 async def schedule_page(request: Request):

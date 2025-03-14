@@ -50,26 +50,25 @@ async def login_page(request: Request):
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     try:
         db = await get_db()
-        # Find the user
         user = await db.users.find_one({"username": username})
         
-        if not user or not pwd_context.verify(password, user["password"]):  # Changed from hashed_password to password
+        if not user or not pwd_context.verify(password, user["password"]):
             return templates.TemplateResponse(
                 "login.html",
                 {"request": request, "error": "Invalid username or password"},
                 status_code=401
             )
         
-        # Create response with redirect
+        # Create response with redirect based on role
         response = RedirectResponse(
-            url="/inventory" if not user.get("is_admin") else "/dashboard",
+            url="/dashboard" if user["role"] == "admin" else "/inventory",
             status_code=303
         )
         
-        # Set session cookie
+        # Just set a simple cookie with user info
         response.set_cookie(
             key="access_token",
-            value=str(user["_id"]),  # Convert ObjectId to string
+            value=str(user["_id"]),
             httponly=True
         )
         

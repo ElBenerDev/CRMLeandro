@@ -10,38 +10,96 @@ class CashRegister {
             balance: 200.00
         };
         
+        this.vaultTotal = 0;
+        this.loadVaultTotal();
+
         // Initialize immediately
         this.loadInitialData();
         this.initializeEventListeners();
     }
 
+    async loadVaultTotal() {
+        try {
+            const response = await fetch('/api/cash-register/vault/total');
+            if (!response.ok) throw new Error('Failed to load vault total');
+            
+            const data = await response.json();
+            this.vaultTotal = data.total || 0;
+            this.updateVaultDisplay();
+            console.log('Loaded vault total:', this.vaultTotal); // Debug log
+        } catch (error) {
+            console.error('Error loading vault total:', error);
+            this.showAlert('Error al cargar el total de caja fuerte', 'danger');
+        }
+    }
+
+    updateVaultDisplay() {
+        const vaultDisplay = document.getElementById('vaultTotalDisplay');
+        if (vaultDisplay) {
+            const formattedTotal = this.formatCurrency(this.vaultTotal || 0);
+            console.log('Updating vault display:', formattedTotal); // Debug log
+            vaultDisplay.textContent = formattedTotal;
+        }
+    }
+
+    async updateVaultTotal() {
+        try {
+            const response = await fetch('/api/cash-register/vault/total');
+            if (!response.ok) {
+                throw new Error('Error getting vault total');
+            }
+            const total = await response.json();
+            this.updateVaultDisplay(total);
+            return total;
+        } catch (error) {
+            console.error('Error updating vault total:', error);
+        }
+    }
+
     loadInitialData() {
-        console.log('Loading initial data:', window.initialData); // Debug log
+        console.log('Loading initial data:', window.initialData);
+        
+        // Reset state first
+        this.isDayStarted = false;
+        this.currentEntryId = null;
+        this.isInitialVerified = false;
+        this.dailyTotals = {
+            initial: 200.00,
+            sales: 0,
+            expenses: 0,
+            balance: 200.00
+        };
         
         if (window.initialData && window.initialData.currentRegister) {
             const register = window.initialData.currentRegister;
-            this.currentEntryId = register._id;
-            this.isInitialVerified = register.initial_amount_verified;
-            this.isDayStarted = true;
-            this.dailyTotals = {
-                initial: register.initial_amount_counted,
-                sales: register.total_income || 0,
-                expenses: register.total_expenses || 0,
-                balance: register.current_balance || register.initial_amount_counted
-            };
+            
+            // Only set active state if register is open
+            if (register.status === 'open') {
+                this.currentEntryId = register._id;
+                this.isInitialVerified = register.initial_amount_verified;
+                this.isDayStarted = true;
+                this.dailyTotals = {
+                    initial: register.initial_amount_counted,
+                    sales: register.total_income || 0,
+                    expenses: register.total_expenses || 0,
+                    balance: register.current_balance || register.initial_amount_counted
+                };
+            }
 
             // Update UI states
             document.getElementById('startDayBtn').disabled = register.status === 'open';
             document.getElementById('addTransactionBtn').disabled = register.status !== 'open';
             document.getElementById('closeDayBtn').disabled = register.status !== 'open';
-            document.getElementById('dailyStatusCard').style.display = 'block';
+            document.getElementById('dailyStatusCard').style.display = register.status === 'open' ? 'block' : 'none';
             
-            // Update displays
-            this.updateDailyStatus();
-            this.updateTransactionsTable(register.transactions || []);
+            // Update displays if register is open
+            if (register.status === 'open') {
+                this.updateDailyStatus();
+                this.updateTransactionsTable(register.transactions || []);
+            }
         } else {
-            console.log('No current register found'); // Debug log
-            // No active register for today
+            console.log('No current register found');
+            // Reset UI for new day
             document.getElementById('startDayBtn').disabled = false;
             document.getElementById('addTransactionBtn').disabled = true;
             document.getElementById('closeDayBtn').disabled = true;
@@ -76,11 +134,6 @@ class CashRegister {
     }
 
     async startDay() {
-        if (this.isDayStarted) {
-            this.showAlert('Ya existe un registro activo para hoy', 'warning');
-            return;
-        }
-
         const counted = parseFloat(document.getElementById('initial_amount_counted').value);
         const notes = document.getElementById('startNotes').value;
         const responsible = document.getElementById('responsible').value;
@@ -105,7 +158,10 @@ class CashRegister {
                 })
             });
 
-            if (!response.ok) throw new Error('Error starting day');
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Error starting day');
+            }
 
             const result = await response.json();
             this.currentEntryId = result.id;
@@ -129,7 +185,7 @@ class CashRegister {
 
         } catch (error) {
             console.error('Error:', error);
-            this.showAlert('Error al iniciar el día', 'danger');
+            this.showAlert(error.message || 'Error al iniciar el día', 'danger');
         }
     }
 
@@ -182,20 +238,17 @@ class CashRegister {
                 })
             });
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Error saving transaction');
-            }
+            if (!response.ok) throw new Error('Transaction failed');
 
             const result = await response.json();
-            
-            // Update transactions array
+            console.log('Transaction result:', result);
+
+            // Update transactions array and daily totals
             window.initialData.transactions = result.transactions;
             
-            // Update totals
+            // Calculate daily totals
             this.dailyTotals.sales = 0;
             this.dailyTotals.expenses = 0;
-            
             result.transactions.forEach(t => {
                 if (t.type === 'income') {
                     this.dailyTotals.sales += t.amount;
@@ -212,11 +265,17 @@ class CashRegister {
             this.updateDailyStatus();
             this.updateTransactionsTable(result.transactions);
 
-            // Close modal
+            // Keep current vault total and add new transaction
+            if (type === 'income') {
+                this.vaultTotal += amount;
+            } else {
+                this.vaultTotal -= amount;
+            }
+            this.updateVaultDisplay();
+
+            // Close modal and reset form
             const modal = bootstrap.Modal.getInstance(document.getElementById('transactionModal'));
             modal.hide();
-
-            // Reset form
             document.getElementById('transactionForm').reset();
 
             this.showAlert('Transacción guardada correctamente', 'success');
@@ -224,6 +283,43 @@ class CashRegister {
         } catch (error) {
             console.error('Error:', error);
             this.showAlert(error.message || 'Error al guardar la transacción', 'danger');
+        }
+    }
+
+    async addTransaction(type, amount, description) {
+        try {
+            const response = await fetch(`/api/cash-register/${this.currentEntryId}/transactions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, amount, description })
+            });
+
+            if (!response.ok) {
+                throw new Error('Error adding transaction');
+            }
+
+            const result = await response.json();
+            console.log('Transaction result:', result);
+
+            // Update transactions table
+            this.updateTransactionsTable(result.transactions);
+            
+            // Update daily totals
+            if (type === 'income') {
+                this.dailyTotals.sales += amount;
+            } else {
+                this.dailyTotals.expenses += amount;
+            }
+            this.updateDailyStatus();
+
+            // Get updated vault total without resetting
+            await this.updateVaultTotal();
+
+            return result;
+        } catch (error) {
+            console.error('Error:', error);
+            this.showAlert(error.message || 'Error adding transaction', 'danger');
+            throw error;
         }
     }
 
@@ -308,14 +404,17 @@ class CashRegister {
         if (!alertContainer) {
             alertContainer = document.createElement('div');
             alertContainer.id = 'alertContainer';
-            const container = document.querySelector('.container-fluid');
-            const h1 = container.querySelector('h1');
-            container.insertBefore(alertContainer, h1.nextSibling);
+            alertContainer.style.position = 'fixed';
+            alertContainer.style.top = '20px';
+            alertContainer.style.right = '20px';
+            alertContainer.style.zIndex = '1050';
+            document.body.appendChild(alertContainer);
         }
 
         // Create alert
         const alert = document.createElement('div');
         alert.className = `alert alert-${type} alert-dismissible fade show`;
+        alert.role = 'alert';
         alert.innerHTML = `
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
@@ -324,8 +423,15 @@ class CashRegister {
         // Add alert to container
         alertContainer.appendChild(alert);
 
+        // Initialize Bootstrap alert
+        const bsAlert = new bootstrap.Alert(alert);
+
         // Remove after 5 seconds
-        setTimeout(() => alert.remove(), 5000);
+        setTimeout(() => {
+            bsAlert.close();
+            // Remove from DOM after animation
+            alert.addEventListener('closed.bs.alert', () => alert.remove());
+        }, 5000);
     }
 
     showTransactionModal() {
@@ -369,6 +475,16 @@ class CashRegister {
             });
 
             if (!response.ok) throw new Error('Error closing day');
+
+            const result = await response.json();
+            console.log('Close day result:', result); // Debug log
+
+            // Update vault total if provided
+            if (result.vault_total !== undefined) {
+                this.vaultTotal = result.vault_total;
+                this.updateVaultDisplay();
+                console.log('Final vault total:', this.vaultTotal); // Debug log
+            }
 
             // Disable controls
             document.getElementById('addTransactionBtn').disabled = true;

@@ -2,10 +2,13 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from app.routes import router
-from app.database import get_db, init_db
+from app.routes.inventory import router as inventory_router  # Add this
 from app.middleware.auth_middleware import verify_permissions
+from app.database import get_db, init_db
 from app.scripts.init_cash_register import init_cash_register
+from app.utils.constants import ROLES
 import logging
 
 # Configure logging
@@ -16,17 +19,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info("Initializing application...")
 
-# Create FastAPI app
+# Initialize FastAPI app
 app = FastAPI(
     title="CRM Leandro",
     description="Sistema de gestión para Leandro",
     version="1.0.0"
 )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+# Add session middleware FIRST
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="your-secret-key",  # Change this in production!
+    session_cookie="session",
+    max_age=3600,  # 1 hour
+    same_site="lax",
+    https_only=False
+)
 
-# Add CORS middleware
+# Add CORS middleware AFTER session
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,11 +45,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add auth middleware
+# Add auth middleware LAST
 app.middleware("http")(verify_permissions)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Include all routes
 app.include_router(router)
+app.include_router(inventory_router)  # Add this
+
+# Make ROLES available globally
+app.state.ROLES = ROLES
 
 @app.on_event("startup")
 async def startup_event():

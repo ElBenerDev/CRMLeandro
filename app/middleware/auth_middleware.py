@@ -39,60 +39,34 @@ USER_PERMISSIONS = {
 
 async def verify_permissions(request: Request, call_next):
     # Public paths that don't require authentication
-    public_paths = ["/login", "/static", "/favicon.ico", "/logout"]
-    
-    if any(request.url.path.startswith(path) for path in public_paths):
+    if request.url.path.startswith(("/login", "/static", "/favicon.ico")):
         return await call_next(request)
 
-    # Check for access token
-    token = request.cookies.get("access_token")
-    if not token:
-        return RedirectResponse(url="/login", status_code=303)
-        
     try:
+        # Check if user is authenticated via cookie
+        token = request.cookies.get("access_token")
+        if not token:
+            return RedirectResponse(url="/login", status_code=303)
+            
+        # Get user from database
         db = await get_db()
         user = await db.users.find_one({"_id": ObjectId(token)})
         
         if not user:
-            logger.warning("No user found for token")
             return RedirectResponse(url="/login", status_code=303)
 
-        # Set complete user state
+        # Set basic user info in request state
         request.state.user = {
             "username": user["username"],
-            "is_admin": user.get("is_admin", False),
-            "permissions": USER_PERMISSIONS["admin"] if user.get("is_admin") else USER_PERMISSIONS["user"],
-            "_id": str(user["_id"]),
-            "role": user.get("role", "user")
+            "is_admin": user["role"] == "admin",
+            "role": user["role"]
         }
 
-        logger.debug(f"User state set: {request.state.user}")
-
-        # Check permissions based on route
-        current_path = request.url.path
-        is_admin = user.get("is_admin", False)
-
-        # Block non-admins from admin-only routes
-        if any(current_path.startswith(route) for route in ADMIN_ONLY_ROUTES):
-            if not is_admin:
-                logger.warning(f"Non-admin user attempted to access {current_path}")
-                return RedirectResponse(url="/inventory", status_code=303)
-
-        # Allow inventory API access for users with perform_count permission
-        if (current_path.startswith("/api/inventory") and 
-            "perform_count" in request.state.user["permissions"]):
-            return await call_next(request)
-
-        # Regular users can only access inventory with limited permissions
-        if not is_admin and not any(current_path.startswith(route) for route in SHARED_ROUTES):
-            logger.warning(f"User attempted to access unauthorized path {current_path}")
-            return RedirectResponse(url="/inventory", status_code=303)
+        return await call_next(request)
 
     except Exception as e:
         logger.error(f"Auth middleware error: {str(e)}")
         return RedirectResponse(url="/login", status_code=303)
-
-    return await call_next(request)
 
 async def check_permissions(request: Request):
     """Check user permissions for the current route"""

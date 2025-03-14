@@ -13,7 +13,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Create router
-router = APIRouter()
+router = APIRouter(
+    prefix="",  # Remove any prefix
+    tags=["inventory"]
+)
 
 # Setup templates
 templates = Jinja2Templates(directory="app/templates")

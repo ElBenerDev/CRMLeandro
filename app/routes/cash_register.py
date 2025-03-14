@@ -18,50 +18,56 @@ web_router = APIRouter()
 api_router = APIRouter(prefix="/api/cash-register", tags=["cash_register"])
 templates = Jinja2Templates(directory="app/templates")
 
+def serialize_doc(doc):
+    """Convert MongoDB document to JSON-serializable format"""
+    if doc is None:
+        return None
+    
+    if isinstance(doc, dict):
+        return {
+            key: serialize_doc(value) 
+            for key, value in doc.items()
+        }
+    elif isinstance(doc, list):
+        return [serialize_doc(item) for item in doc]
+    elif isinstance(doc, ObjectId):
+        return str(doc)
+    elif isinstance(doc, datetime):
+        return doc.isoformat()
+    return doc
+
 @web_router.get("/cash-register", name="cash_register.index")
 async def cash_register_page(request: Request):
     try:
         db = await get_db()
         
-        # Get today's register entry
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow = today + timedelta(days=1)
+        # Get only open register, regardless of date
+        current_register = await db.cash_register.find_one(
+            {"status": "open"},
+            sort=[("initial_count_time", -1)]
+        )
         
-        current_register = await db.cash_register.find_one({
-            "date": {"$gte": today, "$lt": tomorrow}
-        }, sort=[("initial_count_time", -1)])
-        
-        template_data = {
-            "request": request,
-            "current_register": None,
-            "transactions": []
-        }
-        
+        # Get transactions if register exists and is open
+        transactions = []
         if current_register:
-            # Calculate totals
-            total_income = sum(t["amount"] for t in current_register.get("transactions", []) 
-                             if t["type"] == "income")
-            total_expenses = sum(t["amount"] for t in current_register.get("transactions", []) 
-                               if t["type"] == "expense")
-            
-            # Convert ObjectId to string
-            current_register["_id"] = str(current_register["_id"])
-            
-            # Add calculated totals
-            current_register["total_income"] = total_income
-            current_register["total_expenses"] = total_expenses
-            current_register["current_balance"] = (
-                current_register["initial_amount_counted"] + total_income - total_expenses
-            )
-            
-            template_data["current_register"] = current_register
-            template_data["transactions"] = current_register.get("transactions", [])
-
-        # Process template data
-        processed_data = process_template_data(template_data)
+            transactions = current_register.get("transactions", [])
+            # Serialize the register and transactions
+            current_register = serialize_doc(current_register)
+            transactions = serialize_doc(transactions)
         
-        return templates.TemplateResponse("cash_register.html", processed_data)
+        # Get vault total
+        vault_total = await get_vault_total(db)
         
+        return templates.TemplateResponse(
+            "cash_register.html",
+            {
+                "request": request,
+                "current_register": current_register,
+                "transactions": transactions,
+                "vault_total": vault_total,
+                "is_admin": request.state.user.get("is_admin", False)
+            }
+        )
     except Exception as e:
         logger.error(f"Error loading cash register page: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -183,27 +189,25 @@ async def create_cash_entry(request: Request):
         data = await request.json()
         db = await get_db()
         
-        # Check if there's already an active register for today
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow = today + timedelta(days=1)
-        
-        # Only check for OPEN registers
-        existing_register = await db.cash_register.find_one({
-            "date": {"$gte": today, "$lt": tomorrow},
-            "status": "open"  # Only block if there's an open register
+        # Check only for OPEN registers
+        existing_open_register = await db.cash_register.find_one({
+            "status": "open"  # Only check status, regardless of date
         })
         
-        if existing_register:
+        if existing_open_register:
             raise HTTPException(
                 status_code=400, 
-                detail="Ya existe un registro activo para hoy"
+                detail="Existe un registro abierto. Debe cerrarlo antes de abrir uno nuevo."
             )
         
-        # Create new day entry with register_number
+        # Get today's registers for numbering
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow = today + timedelta(days=1)
         register_count = await db.cash_register.count_documents({
             "date": {"$gte": today, "$lt": tomorrow}
         })
         
+        # Create new entry
         entry = {
             "date": datetime.fromisoformat(data["date"]),
             "initial_amount": 200.00,
@@ -218,7 +222,7 @@ async def create_cash_entry(request: Request):
             "final_verified_by": None,
             "notes": data.get("notes", ""),
             "responsible": data["responsible"],
-            "register_number": register_count + 1  # Add sequential number for the day
+            "register_number": register_count + 1  # Sequential number for the day
         }
         
         result = await db.cash_register.insert_one(entry)
@@ -228,7 +232,7 @@ async def create_cash_entry(request: Request):
             db,
             result.inserted_id,
             "APERTURA",
-            f"Caja iniciada con ${entry['initial_amount_counted']:.2f}",
+            f"Caja #{register_count + 1} iniciada con ${entry['initial_amount_counted']:.2f}",
             user["username"]
         )
         
@@ -238,7 +242,7 @@ async def create_cash_entry(request: Request):
         if isinstance(e, HTTPException):
             raise e
         logger.error(f"Error creating cash entry: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))  # Fixed parenthesis
 
 @api_router.post("/{entry_id}/transactions")
 async def add_transaction(entry_id: str, request: Request):
@@ -273,32 +277,39 @@ async def add_transaction(entry_id: str, request: Request):
         if result.modified_count == 0:
             raise HTTPException(status_code=400, detail="Failed to add transaction")
             
+        # Get updated register data
         updated_register = await db.cash_register.find_one({"_id": ObjectId(entry_id)})
         
-        # Process transactions for JSON response
-        processed_data = process_template_data({
-            "transactions": updated_register["transactions"]
-        })
+        # Calculate new totals for this register
+        total_income = sum(t["amount"] for t in updated_register["transactions"] if t["type"] == "income")
+        total_expenses = sum(t["amount"] for t in updated_register["transactions"] if t["type"] == "expense")
+        new_total = total_income - total_expenses
         
-        # Add transaction log
-        log_details = (f"{'Ingreso' if data['type'] == 'income' else 'Gasto'} "
-                      f"de ${float(data['amount']):.2f} - {data['description']}")
-        await add_log_entry(
-            db,
-            ObjectId(entry_id),
-            "TRANSACCIÓN",
-            log_details,
-            user["username"]
-        )
+        logger.debug(f"Transaction added - Type: {data['type']}, Amount: {data['amount']}, Register Total: {new_total}")
+        
+        # Get updated vault total
+        vault_pipeline = [
+            {"$match": {"status": "closed"}},
+            {"$group": {
+                "_id": None,
+                "total_income": {"$sum": "$billing"},
+                "total_expenses": {"$sum": "$expenses"}
+            }}
+        ]
+        
+        vault_result = await db.cash_register.aggregate(vault_pipeline).to_list(None)
+        vault_total = vault_result[0]["total_income"] - vault_result[0]["total_expenses"] if vault_result else 0
         
         return {
             "success": True,
-            "transactions": processed_data["transactions"]
+            "transactions": updated_register["transactions"],
+            "register_total": new_total,
+            "vault_total": vault_total
         }
         
     except Exception as e:
         logger.error(f"Error adding transaction: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))  # Fixed syntax here
 
 @api_router.post("/{entry_id}/close")
 async def close_day(entry_id: str, request: Request):
@@ -600,6 +611,220 @@ async def export_register(entry_id: str, format: str = Query("xlsx", regex="^(cs
         if output:
             output.close()
 
+# Modify these routes only, keep everything else the same
+
+@api_router.get("/vault/total")
+async def get_vault_total():
+    try:
+        db = await get_db()
+        # Get all transactions from closed registers
+        pipeline = [
+            {"$match": {"status": "closed"}},
+            {"$group": {
+                "_id": None,
+                "total_income": {
+                    "$sum": {
+                        "$sum": {
+                            "$map": {
+                                "input": "$transactions",
+                                "as": "t",
+                                "in": {
+                                    "$cond": [
+                                        {"$eq": ["$$t.type", "income"]},
+                                        "$$t.amount",
+                                        0
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                "total_expenses": {
+                    "$sum": {
+                        "$sum": {
+                            "$map": {
+                                "input": "$transactions",
+                                "as": "t",
+                                "in": {
+                                    "$cond": [
+                                        {"$eq": ["$$t.type", "expense"]},
+                                        "$$t.amount",
+                                        0
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }}
+        ]
+        
+        result = await db.cash_register.aggregate(pipeline).to_list(None)
+        if result:
+            total = result[0]["total_income"] - result[0]["total_expenses"]
+            logger.debug(f"Vault total calculated - Income: {result[0]['total_income']}, Expenses: {result[0]['total_expenses']}, Total: {total}")
+        else:
+            total = 0
+            logger.debug("No closed registers found, vault total is 0")
+            
+        return {"total": total}
+    except Exception as e:
+        logger.error(f"Error getting vault total: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/vault/update")
+async def update_vault_total(amount: float):
+    try:
+        db = await get_db()
+        # Get current vault total
+        vault = await db.vault.find_one({})
+        current_total = vault["total_amount"] if vault else 0
+        
+        # Update vault with new total and add transaction record
+        await db.vault.update_one(
+            {},
+            {
+                "$set": {
+                    "total_amount": amount,
+                    "last_updated": datetime.now()
+                },
+                "$push": {
+                    "transactions": {
+                        "previous_total": current_total,
+                        "new_total": amount,
+                        "change": amount - current_total,
+                        "timestamp": datetime.now()
+                    }
+                }
+            },
+            upsert=True
+        )
+        
+        return {"success": True, "total": amount}
+    except Exception as e:
+        logger.error(f"Error updating vault total: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/vault/total")
+async def get_vault_total_endpoint(request: Request):
+    try:
+        db = await get_db()
+        total = await get_vault_total(db)
+        return total
+    except Exception as e:
+        logger.error(f"Error getting vault total: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
 # Include the web router in the API router
 web_router.include_router(api_router)
-router = web_router
+
+async def get_vault_total(db):
+    try:
+        # Get totals from closed registers
+        pipeline = [
+            {
+                "$facet": {
+                    "closed_registers": [
+                        {"$match": {"status": "closed"}},
+                        {"$group": {
+                            "_id": None,
+                            "total_income": {
+                                "$sum": {
+                                    "$sum": {
+                                        "$map": {
+                                            "input": "$transactions",
+                                            "as": "t",
+                                            "in": {
+                                                "$cond": [
+                                                    {"$eq": ["$$t.type", "income"]},
+                                                    "$$t.amount",
+                                                    0
+                                                ]
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "total_expenses": {
+                                "$sum": {
+                                    "$sum": {
+                                        "$map": {
+                                            "input": "$transactions",
+                                            "as": "t",
+                                            "in": {
+                                                "$cond": [
+                                                    {"$eq": ["$$t.type", "expense"]},
+                                                    "$$t.amount",
+                                                    0
+                                                ]
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }}
+                    ],
+                    "open_register": [
+                        {"$match": {"status": "open"}},
+                        {"$unwind": "$transactions"},
+                        {"$group": {
+                            "_id": None,
+                            "open_income": {
+                                "$sum": {
+                                    "$cond": [
+                                        {"$eq": ["$transactions.type", "income"]},
+                                        "$transactions.amount",
+                                        0
+                                    ]
+                                }
+                            },
+                            "open_expenses": {
+                                "$sum": {
+                                    "$cond": [
+                                        {"$eq": ["$transactions.type", "expense"]},
+                                        "$transactions.amount",
+                                        0
+                                    ]
+                                }
+                            }
+                        }}
+                    ]
+                }
+            }
+        ]
+        
+        result = await db.cash_register.aggregate(pipeline).to_list(None)
+        
+        # Initialize totals
+        closed_income = 0
+        closed_expenses = 0
+        open_income = 0
+        open_expenses = 0
+        
+        if result:
+            # Get closed registers totals
+            if result[0]["closed_registers"]:
+                closed = result[0]["closed_registers"][0]
+                closed_income = closed.get("total_income", 0)
+                closed_expenses = closed.get("total_expenses", 0)
+            
+            # Get open register totals
+            if result[0]["open_register"]:
+                open_reg = result[0]["open_register"][0]
+                open_income = open_reg.get("open_income", 0)
+                open_expenses = open_reg.get("open_expenses", 0)
+        
+        # Calculate total including both closed and open registers
+        total = (closed_income + open_income) - (closed_expenses + open_expenses)
+        
+        logger.debug(f"Vault total calculated - Closed Income: {closed_income}, "
+                    f"Closed Expenses: {closed_expenses}, "
+                    f"Open Income: {open_income}, "
+                    f"Open Expenses: {open_expenses}, "
+                    f"Total: {total}")
+        
+        return total
+        
+    except Exception as e:
+        logger.error(f"Error getting vault total: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

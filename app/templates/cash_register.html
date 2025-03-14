@@ -6,6 +6,28 @@
 <div class="container-fluid">
     <h1 class="text-center mb-4">PLANILLA DE CAJA</h1>
     
+    <!-- Vault Total Display -->
+    <div class="row mb-4">
+        <div class="col-md-6 offset-md-3">
+            <div class="card vault-card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="vault-title">Caja Fuerte</h5>
+                            <p class="vault-subtitle mb-2">Total Acumulado</p>
+                            <h2 class="vault-amount" id="vaultTotalDisplay">$0.00</h2>
+                        </div>
+                        <div class="col-auto">
+                            <div class="vault-icon">
+                                <i class="fas fa-vault"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Control Buttons -->
     <div class="cash-register-controls mb-4">
         <button class="btn btn-primary" id="startDayBtn" data-bs-toggle="modal" data-bs-target="#startDayModal">
@@ -197,7 +219,8 @@
 <script>
     window.initialData = {
         currentRegister: {{ current_register | tojson | safe if current_register else 'null' }},
-        transactions: {{ transactions | tojson | safe if transactions else '[]' }}
+        transactions: {{ transactions | tojson | safe if transactions else '[]' }},
+        vaultTotal: {{ vault_total | tojson | safe if vault_total else '0' }}  // Add vault total to initial data
     };
 </script>
 {% endblock %}
